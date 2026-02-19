@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Flying Boss Jumping Game</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="game-wrapper">
+        <!-- Main Menu -->
+        <div class="main-menu" id="mainMenu">
+            <div class="menu-content">
+                <h1 class="menu-title">BEHOLDER BOSS FIGHT</h1>
+                <p class="menu-subtitle">Can you survive the chaos?</p>
+                <button class="start-btn" onclick="game.startGame()">START GAME</button>
+                <div class="menu-info">
+                    <p><strong>Controls:</strong></p>
+                    <p><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> Move | <kbd>CLICK</kbd> Shoot</p>
+                    <p><strong>Features:</strong></p>
+                    <p>Random weapon modes • Auto-rotating attacks • 21 boss patterns</p>
+                    <p>Heal 15 HP every 1000 frames • Extreme difficulty</p>
+                </div>
+            </div>
+        </div>
+
+        <div class="game-wrapper-inner">
+        <div class="health-bar-top">
+            <div class="health-bar-container">
+                <div class="health-bar boss-health" id="bossHealth">
+                    <span class="health-text" id="bossHealthText">1200/1200</span>
+                </div>
+            </div>
+        </div>
+        
+        <div class="health-bar-bottom">
+            <div class="health-bar-container">
+                <div class="health-bar player-health" id="playerHealth">
+                    <span class="health-text" id="playerHealthText">200/200</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Game Canvas -->
+        <div class="game-container">
+            <canvas id="gameCanvas"></canvas>
+        </div>
+
+        <!-- Controls Info -->
+        <div class="controls-panel">
+            <div class="control-item">
+                <kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> to Move
+            </div>
+            <div class="control-item">
+                <kbd>CLICK</kbd> to Shoot
+            </div>
+            <div class="control-item" style="font-size: 11px; opacity: 0.9;">
+                🔀 Auto-Switching Random Modes
+            </div>
+            <div class="control-item" style="font-size: 10px; opacity: 0.7;">
+                Modes rotate automatically with cooldowns
+            </div>
+        </div>
+
+        <!-- Game Over Screen -->
+        <div class="game-over" id="gameOver">
+            <h2 id="gameOverTitle"></h2>
+            <p id="gameOverMessage"></p>
+            <button class="restart-btn" onclick="game.restart()">Play Again</button>
+        </div>
+        </div>
+    </div>
+
+    <script src="game.js"></script>
+</body>
+</html>

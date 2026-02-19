@@ -1,0 +1,353 @@
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+body {
+    font-family: 'Arial', sans-serif;
+    background: #000;
+    color: #fff;
+    margin: 0;
+    padding: 0;
+    overflow: hidden;
+    width: 100vw;
+    height: 100vh;
+}
+
+.game-wrapper {
+    width: 100vw;
+    height: 100vh;
+    display: flex;
+    flex-direction: column;
+    position: relative;
+}
+
+@keyframes pulse {
+    0%, 100% { text-shadow: 0 0 20px #ff00ff, 0 0 40px #ff00ff; }
+    50% { text-shadow: 0 0 30px #ff00ff, 0 0 60px #ff00ff, 0 0 80px #ff00ff; }
+}
+
+/* Health Bars */
+.health-bar-top {
+    position: absolute;
+    top: 10px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 300px;
+    z-index: 10;
+}
+
+.health-bar-bottom {
+    position: absolute;
+    bottom: 10px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 300px;
+    z-index: 10;
+}
+
+.health-bar-container {
+    width: 100%;
+    height: 20px;
+    background: rgba(0, 0, 0, 0.7);
+    border-radius: 10px;
+    overflow: hidden;
+    border: 2px solid rgba(255, 255, 255, 0.4);
+}
+
+.health-bar {
+    height: 100%;
+    transition: width 0.3s ease;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    position: relative;
+}
+
+.player-health {
+    width: 100%;
+    background: linear-gradient(90deg, #ff1744 0%, #f50057 100%);
+    box-shadow: 0 0 20px rgba(255, 23, 68, 0.5);
+}
+
+.boss-health {
+    width: 100%;
+    background: linear-gradient(90deg, #7b1fa2 0%, #9c27b0 100%);
+    box-shadow: 0 0 20px rgba(156, 39, 176, 0.5);
+}
+
+.health-text {
+    font-weight: bold;
+    font-size: 0.75em;
+    text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.8);
+    z-index: 1;
+}
+
+/* Game Canvas */
+.game-container {
+    flex: 1;
+    width: 100%;
+    height: 100%;
+    position: relative;
+}
+
+#gameCanvas {
+    display: block;
+    width: 100%;
+    height: 100%;
+    cursor: crosshair;
+}
+
+/* Controls Panel */
+.controls-panel {
+    position: absolute;
+    bottom: 20px;
+    left: 50%;
+    transform: translateX(-50%);
+    display: flex;
+    gap: 30px;
+    z-index: 10;
+}
+
+.control-item {
+    background: rgba(255, 255, 255, 0.05);
+    border: 2px solid rgba(255, 255, 255, 0.2);
+    border-radius: 10px;
+    padding: 10px 20px;
+    backdrop-filter: blur(10px);
+}
+
+kbd {
+    background: rgba(255, 255, 255, 0.1);
+    border: 2px solid rgba(255, 255, 255, 0.3);
+    border-radius: 5px;
+    padding: 5px 10px;
+    font-weight: bold;
+    font-family: monospace;
+    color: #ffd700;
+    box-shadow: 0 2px 5px rgba(0, 0, 0, 0.3);
+}
+
+/* Game Over Screen */
+.game-over {
+    display: none;
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    background: rgba(0, 0, 0, 0.95);
+    border: 3px solid #ffd700;
+    border-radius: 20px;
+    padding: 50px;
+    text-align: center;
+    z-index: 1000;
+    min-width: 400px;
+    box-shadow: 0 0 50px rgba(255, 215, 0, 0.5);
+}
+
+.game-over h2 {
+    font-size: 3em;
+    margin-bottom: 20px;
+    text-shadow: 0 0 20px currentColor;
+}
+
+.game-over p {
+    font-size: 1.5em;
+    margin-bottom: 30px;
+    color: #aaa;
+}
+
+.restart-btn {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    border: none;
+    border-radius: 10px;
+    padding: 15px 40px;
+    color: white;
+    font-size: 1.2em;
+    font-weight: bold;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    box-shadow: 0 5px 15px rgba(0, 0, 0, 0.3);
+}
+
+.restart-btn:hover {
+    transform: scale(1.1);
+    box-shadow: 0 10px 25px rgba(0, 0, 0, 0.5);
+}
+
+/* Responsive Design */
+@media (max-width: 768px) {
+    .health-bar-top,
+    .health-bar-bottom {
+        width: 250px;
+    }
+
+    .health-bar-container {
+        height: 18px;
+    }
+
+    .health-text {
+        font-size: 0.7em;
+    }
+
+    .controls-panel {
+        bottom: 10px;
+        gap: 15px;
+        flex-wrap: wrap;
+    }
+
+    .control-item {
+        font-size: 0.8em;
+        padding: 6px 12px;
+    }
+
+    kbd {
+        padding: 3px 6px;
+        font-size: 0.9em;
+    }
+
+    .game-over {
+        min-width: 80%;
+        padding: 30px 20px;
+    }
+
+    .game-over h2 {
+        font-size: 2em;
+    }
+
+    .game-over p {
+        font-size: 1.1em;
+    }
+}
+
+/* Main Menu */
+.main-menu {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: linear-gradient(135deg, #0a0015 0%, #1a0030 50%, #0a0015 100%);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 1000;
+    transition: opacity 0.5s ease;
+}
+
+.main-menu.hidden {
+    display: none;
+}
+
+.menu-content {
+    text-align: center;
+    max-width: 600px;
+    padding: 40px;
+}
+
+.menu-title {
+    font-size: 4em;
+    font-weight: bold;
+    margin-bottom: 20px;
+    background: linear-gradient(45deg, #ff00ff, #00ffff);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+    animation: pulse 2s infinite;
+    text-shadow: 0 0 30px rgba(255, 0, 255, 0.5);
+}
+
+.menu-subtitle {
+    font-size: 1.5em;
+    color: #00ffff;
+    margin-bottom: 40px;
+    opacity: 0.9;
+}
+
+.start-btn {
+    padding: 20px 60px;
+    font-size: 1.5em;
+    font-weight: bold;
+    color: #000;
+    background: linear-gradient(45deg, #00ffff, #ff00ff);
+    border: none;
+    border-radius: 10px;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    box-shadow: 0 0 20px rgba(0, 255, 255, 0.5);
+    margin-bottom: 40px;
+}
+
+.start-btn:hover {
+    transform: scale(1.1);
+    box-shadow: 0 0 40px rgba(0, 255, 255, 0.8), 0 0 60px rgba(255, 0, 255, 0.6);
+    text-shadow: 0 0 10px rgba(255, 0, 255, 0.8);
+}
+
+.start-btn:active {
+    transform: scale(0.95);
+}
+
+.menu-info {
+    text-align: left;
+    background: rgba(0, 255, 255, 0.1);
+    border: 2px solid #00ffff;
+    border-radius: 10px;
+    padding: 20px;
+    font-size: 0.9em;
+    line-height: 1.8;
+}
+
+.menu-info p {
+    margin: 8px 0;
+    color: #aaffff;
+}
+
+.menu-info strong {
+    color: #00ffff;
+    text-transform: uppercase;
+}
+
+.game-wrapper-inner {
+    position: relative;
+    width: 100%;
+    height: 100%;
+    flex: 1;
+}
+
+@keyframes shootGlow {
+    0% { box-shadow: 0 0 20px rgba(255, 215, 0, 0.8); }
+    50% { box-shadow: 0 0 40px rgba(255, 215, 0, 1), 0 0 60px rgba(255, 0, 0, 0.5); }
+    100% { box-shadow: 0 0 20px rgba(255, 215, 0, 0.8); }
+}
+
+@keyframes canvasFlash {
+    0%, 100% { filter: brightness(1); }
+    50% { filter: brightness(1.2) drop-shadow(0 0 20px rgba(255, 215, 0, 0.3)); }
+}
+
+#gameCanvas {
+    animation: canvasFlash 2s ease-in-out infinite;
+}
+
+.health-bar {
+    animation: healthPulse 0.3s ease;
+}
+
+@keyframes healthPulse {
+    0% { box-shadow: 0 0 10px currentColor, inset 0 0 10px currentColor; }
+    100% { box-shadow: 0 0 20px currentColor; }
+}
+
+/* Mode indicator glow */
+.control-item {
+    transition: all 0.3s ease;
+    box-shadow: 0 0 10px rgba(255, 215, 0, 0.2);
+}
+
+.control-item:hover {
+    box-shadow: 0 0 20px rgba(255, 215, 0, 0.4);
+    background: rgba(255, 215, 0, 0.05);
+}
+
