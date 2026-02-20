@@ -1,0 +1,778 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dodging Game</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            font-family: Arial, sans-serif;
+        }
+
+        #gameContainer {
+            position: relative;
+            width: 800px;
+            height: 600px;
+            background: #222;
+            border: 3px solid #00ff00;
+            overflow: hidden;
+            box-shadow: 0 0 20px rgba(0, 255, 0, 0.3);
+        }
+
+        #player {
+            position: absolute;
+            width: 40px;
+            height: 40px;
+            background: #00ff00;
+            border-radius: 50%;
+            left: 380px;
+            top: 280px;
+            box-shadow: 0 0 15px rgba(0, 255, 0, 0.8);
+        }
+
+        .obstacle {
+            position: absolute;
+            border-radius: 5px;
+            box-shadow: 0 0 10px rgba(255, 0, 0, 0.7);
+        }
+
+        .obstacle-red {
+            background: #ff0000;
+            box-shadow: 0 0 10px rgba(255, 0, 0, 0.7);
+            clip-path: polygon(50% 0%, 100% 38%, 82% 100%, 18% 100%, 0% 38%);
+        }
+
+        .obstacle-blue {
+            background: #0099ff;
+            border-radius: 50%;
+            box-shadow: 0 0 10px rgba(0, 153, 255, 0.7);
+        }
+
+        .obstacle-purple {
+            background: #ff00ff;
+            box-shadow: 0 0 10px rgba(255, 0, 255, 0.7);
+            clip-path: polygon(0% 0%, 100% 0%, 100% 100%, 0% 100%);
+        }
+
+        .obstacle-orange {
+            background: #ff8800;
+            border-radius: 3px;
+            box-shadow: 0 0 10px rgba(255, 136, 0, 0.7);
+            clip-path: polygon(30% 0%, 70% 0%, 100% 30%, 100% 70%, 70% 100%, 30% 100%, 0% 70%, 0% 30%);
+        }
+
+        @keyframes spin {
+            from {
+                transform: rotate(0deg);
+            }
+            to {
+                transform: rotate(360deg);
+            }
+        }
+
+        .obstacle {
+            animation: spin 2s linear infinite;
+        }
+
+        .trail {
+            position: absolute;
+            width: 25px;
+            height: 25px;
+            background: rgba(0, 255, 0, 0.5);
+            border-radius: 50%;
+            pointer-events: none;
+            box-shadow: 0 0 15px rgba(0, 255, 0, 0.6);
+        }
+
+        .powerup {
+            position: absolute;
+            width: 25px;
+            height: 25px;
+            background: #ffff00;
+            border-radius: 50%;
+            box-shadow: 0 0 15px rgba(255, 255, 0, 0.8);
+        }
+
+        #hud {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            color: #00ff00;
+            font-size: 18px;
+            font-weight: bold;
+            z-index: 10;
+            text-shadow: 0 0 10px rgba(0, 255, 0, 0.5);
+        }
+
+        #score {
+            margin-bottom: 10px;
+        }
+
+        #health {
+            margin-bottom: 10px;
+        }
+
+        #gameOver {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: rgba(0, 0, 0, 0.95);
+            color: #00ff00;
+            padding: 40px 60px;
+            border-radius: 10px;
+            text-align: center;
+            z-index: 100;
+            display: none;
+            border: 3px solid #00ff00;
+        }
+
+        #gameOver h1 {
+            font-size: 40px;
+            margin-bottom: 15px;
+            text-shadow: 0 0 10px rgba(0, 255, 0, 0.8);
+        }
+
+        #gameOver p {
+            font-size: 20px;
+            margin-bottom: 15px;
+        }
+
+        #gameOver button {
+            background: #00ff00;
+            color: #000;
+            border: none;
+            padding: 12px 40px;
+            font-size: 16px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-weight: bold;
+            transition: all 0.3s;
+        }
+
+        #gameOver button:hover {
+            background: #00cc00;
+            box-shadow: 0 0 15px rgba(0, 255, 0, 0.5);
+        }
+
+        #instructions {
+            position: absolute;
+            bottom: 10px;
+            right: 10px;
+            color: #00ff00;
+            font-size: 12px;
+            text-align: right;
+            text-shadow: 0 0 10px rgba(0, 255, 0, 0.5);
+        }
+
+        #difficultyMenu {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: rgba(0, 0, 0, 0.95);
+            color: #00ff00;
+            padding: 60px 80px;
+            border-radius: 10px;
+            text-align: center;
+            z-index: 200;
+            border: 3px solid #00ff00;
+        }
+
+        #difficultyMenu h1 {
+            font-size: 40px;
+            margin-bottom: 30px;
+            text-shadow: 0 0 10px rgba(0, 255, 0, 0.8);
+        }
+
+        .difficulty-buttons {
+            display: flex;
+            gap: 20px;
+            justify-content: center;
+        }
+
+        .difficulty-btn {
+            background: #00ff00;
+            color: #000;
+            border: none;
+            padding: 15px 40px;
+            font-size: 18px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-weight: bold;
+            transition: all 0.3s;
+        }
+
+        .difficulty-btn:hover {
+            background: #00cc00;
+            box-shadow: 0 0 15px rgba(0, 255, 0, 0.5);
+            transform: scale(1.05);
+        }
+
+        @keyframes float {
+            0%, 100% { transform: translateY(0px); }
+            50% { transform: translateY(-20px); }
+        }
+
+        @keyframes pulse-glow {
+            0%, 100% { box-shadow: 0 0 15px rgba(0, 255, 0, 0.8); }
+            50% { box-shadow: 0 0 30px rgba(0, 255, 0, 1); }
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        .bg-star {
+            position: absolute;
+            background: white;
+            border-radius: 50%;
+            opacity: 0.6;
+            animation: twinkle 3s infinite;
+        }
+
+        @keyframes twinkle {
+            0%, 100% { opacity: 0.3; }
+            50% { opacity: 1; }
+        }
+
+        #gameContainer::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: 
+                radial-gradient(circle at 20% 50%, rgba(0, 255, 0, 0.1) 0%, transparent 50%),
+                radial-gradient(circle at 80% 50%, rgba(0, 255, 255, 0.1) 0%, transparent 50%);
+            pointer-events: none;
+            z-index: 1;
+        }
+
+        .obstacle {
+            filter: drop-shadow(0 0 8px currentColor);
+        }
+
+        .powerup {
+            animation: float 2s ease-in-out infinite, pulse-glow 1.5s ease-in-out infinite;
+        }
+
+        #player {
+            animation: pulse-glow 2s ease-in-out infinite;
+        }
+    </style>
+</head>
+<body>
+    <div id="gameContainer">
+        <div id="hud">
+            <div id="score">Score: 0</div>
+            <div id="health">Health: ❤️ ❤️ ❤️</div>
+        </div>
+        <div id="player"></div>
+        <div id="gameOver">
+            <h1>GAME OVER!</h1>
+            <p id="finalScore">Final Score: 0</p>
+            <button onclick="location.reload()">Play Again</button>
+        </div>
+        <div id="difficultyMenu">
+            <h1>SELECT DIFFICULTY</h1>
+            <div class="difficulty-buttons">
+                <button class="difficulty-btn" onclick="startGame('easy')">Easy</button>
+                <button class="difficulty-btn" onclick="startGame('normal')">Normal</button>
+                <button class="difficulty-btn" onclick="startGame('hard')">Hard</button>
+            </div>
+        </div>
+        <div id="instructions">
+            <p>← → ↑ ↓ to move | Avoid the projectiles!</p>
+        </div>
+    </div>
+
+    <script>
+        const gameContainer = document.getElementById('gameContainer');
+        const player = document.getElementById('player');
+        const scoreDisplay = document.getElementById('score');
+        const healthDisplay = document.getElementById('health');
+        const gameOverScreen = document.getElementById('gameOver');
+        const finalScoreDisplay = document.getElementById('finalScore');
+
+        // Create animated background stars
+        function createBackgroundStars() {
+            for (let i = 0; i < 20; i++) {
+                const star = document.createElement('div');
+                star.className = 'bg-star';
+                star.style.width = Math.random() * 3 + 'px';
+                star.style.height = star.style.width;
+                star.style.left = Math.random() * 800 + 'px';
+                star.style.top = Math.random() * 600 + 'px';
+                star.style.animationDelay = Math.random() * 3 + 's';
+                gameContainer.appendChild(star);
+            }
+        }
+        createBackgroundStars();
+
+        // Player object
+        const playerObj = {
+            x: 380,
+            y: 280,
+            width: 40,
+            height: 40,
+            velocityX: 0,
+            velocityY: 0,
+            speed: 7,
+            score: 0,
+            health: 3,
+            invulnerable: false
+        };
+
+        // Game state
+        let obstacles = [];
+        let powerups = [];
+        let trailParticles = [];
+        let obstacleSpeed = 3;
+        let spawnRate = 50; // Lower = more frequent
+        let gameRunning = false;
+        let frameCounter = 0;
+        let difficulty = 'normal'; // easy, normal, hard
+
+        // Input handling
+        let leftPressed = false;
+        let rightPressed = false;
+        let upPressed = false;
+        let downPressed = false;
+
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'ArrowLeft' || e.key === 'a' || e.key === 'A') {
+                leftPressed = true;
+            }
+            if (e.key === 'ArrowRight' || e.key === 'd' || e.key === 'D') {
+                rightPressed = true;
+            }
+            if (e.key === 'ArrowUp' || e.key === 'w' || e.key === 'W') {
+                upPressed = true;
+            }
+            if (e.key === 'ArrowDown' || e.key === 's' || e.key === 'S') {
+                downPressed = true;
+            }
+        });
+
+        document.addEventListener('keyup', function(e) {
+            if (e.key === 'ArrowLeft' || e.key === 'a' || e.key === 'A') {
+                leftPressed = false;
+            }
+            if (e.key === 'ArrowRight' || e.key === 'd' || e.key === 'D') {
+                rightPressed = false;
+            }
+            if (e.key === 'ArrowUp' || e.key === 'w' || e.key === 'W') {
+                upPressed = false;
+            }
+            if (e.key === 'ArrowDown' || e.key === 's' || e.key === 'S') {
+                downPressed = false;
+            }
+        });
+
+        // Collision detection
+        function isColliding(rect1, rect2) {
+            return rect1.x < rect2.x + rect2.width &&
+                   rect1.x + rect1.width > rect2.x &&
+                   rect1.y < rect2.y + rect2.height &&
+                   rect1.y + rect1.height > rect2.y;
+        }
+
+        // Create explosion particle effect
+        function createExplosionEffect(x, y, color) {
+            const particleCount = 10;
+            for (let i = 0; i < particleCount; i++) {
+                const angle = (Math.PI * 2 * i) / particleCount;
+                const velocity = 3 + Math.random() * 4;
+                const particle = document.createElement('div');
+                particle.style.position = 'absolute';
+                particle.style.width = '6px';
+                particle.style.height = '6px';
+                particle.style.background = color;
+                particle.style.borderRadius = '50%';
+                particle.style.left = x + 'px';
+                particle.style.top = y + 'px';
+                particle.style.pointerEvents = 'none';
+                particle.style.boxShadow = `0 0 8px ${color}`;
+                gameContainer.appendChild(particle);
+
+                let px = x, py = y;
+                let vx = Math.cos(angle) * velocity;
+                let vy = Math.sin(angle) * velocity;
+                let life = 30;
+
+                const animate = () => {
+                    px += vx;
+                    py += vy;
+                    vy += 0.2; // gravity
+                    life--;
+                    particle.style.left = px + 'px';
+                    particle.style.top = py + 'px';
+                    particle.style.opacity = life / 30;
+
+                    if (life > 0) {
+                        requestAnimationFrame(animate);
+                    } else {
+                        particle.remove();
+                    }
+                };
+                animate();
+            }
+        }
+
+        // Update player
+        function updatePlayer() {
+            // Handle horizontal input
+            if (leftPressed) {
+                playerObj.velocityX = -playerObj.speed;
+            } else if (rightPressed) {
+                playerObj.velocityX = playerObj.speed;
+            } else {
+                playerObj.velocityX = 0;
+            }
+
+            // Handle vertical input
+            if (upPressed) {
+                playerObj.velocityY = -playerObj.speed;
+            } else if (downPressed) {
+                playerObj.velocityY = playerObj.speed;
+            } else {
+                playerObj.velocityY = 0;
+            }
+
+            // Update position
+            playerObj.x += playerObj.velocityX;
+            playerObj.y += playerObj.velocityY;
+
+            // Boundary check
+            if (playerObj.x < 0) {
+                playerObj.x = 0;
+            } else if (playerObj.x + playerObj.width > 800) {
+                playerObj.x = 800 - playerObj.width;
+            }
+
+            if (playerObj.y < 0) {
+                playerObj.y = 0;
+            } else if (playerObj.y + playerObj.height > 600) {
+                playerObj.y = 600 - playerObj.height;
+            }
+            // Create trail effect
+            if (frameCounter % 8 === 0) {
+                const trail = {
+                    x: playerObj.x + playerObj.width / 2 - 12.5,
+                    y: playerObj.y + playerObj.height / 2 - 12.5,
+                    life: 30,
+                    element: null
+                };
+
+                const trailEl = document.createElement('div');
+                trailEl.className = 'trail';
+                trailEl.style.left = trail.x + 'px';
+                trailEl.style.top = trail.y + 'px';
+                gameContainer.appendChild(trailEl);
+                trail.element = trailEl;
+                trailParticles.push(trail);
+            }
+            // Update visual position
+            player.style.left = playerObj.x + 'px';
+            player.style.top = playerObj.y + 'px';
+
+            // Update invulnerability (flashing effect)
+            if (playerObj.invulnerable) {
+                player.style.opacity = Math.sin(Date.now() / 100) > 0 ? 0.5 : 1;
+            } else {
+                player.style.opacity = 1;
+            }
+        }
+
+        // Spawn obstacles
+        function spawnObstacle() {
+            const blueSpeed = 1.5 + Math.random() * 3.5; // Random speed between 1.5 and 5
+            const types = [
+                { type: 'red', width: 40, height: 15, speed: 3 },
+                { type: 'blue', width: 25, height: 25, speed: blueSpeed },
+                { type: 'purple', width: 35, height: 12, speed: 4 },
+                { type: 'orange', width: 50, height: 8, speed: 2 }
+            ];
+
+            const selected = types[Math.floor(Math.random() * types.length)];
+            
+            // Pick random side: 0=top, 1=bottom, 2=left, 3=right
+            const side = Math.floor(Math.random() * 4);
+            let x, y, dirX, dirY;
+            
+            switch(side) {
+                case 0: // Top - move downward
+                    x = Math.random() * (800 - selected.width);
+                    y = -selected.height;
+                    dirX = (Math.random() - 0.5) * 0.4; // Slight horizontal variation
+                    dirY = 1;
+                    break;
+                case 1: // Bottom - move upward
+                    x = Math.random() * (800 - selected.width);
+                    y = 600;
+                    dirX = (Math.random() - 0.5) * 0.4;
+                    dirY = -1;
+                    break;
+                case 2: // Left - move rightward
+                    x = -selected.width;
+                    y = Math.random() * (600 - selected.height);
+                    dirX = 1;
+                    dirY = (Math.random() - 0.5) * 0.4;
+                    break;
+                case 3: // Right - move leftward
+                    x = 800;
+                    y = Math.random() * (600 - selected.height);
+                    dirX = -1;
+                    dirY = (Math.random() - 0.5) * 0.4;
+                    break;
+            }
+            
+            const obstacle = {
+                x: x,
+                y: y,
+                width: selected.width,
+                height: selected.height,
+                velocityX: selected.speed * dirX,
+                velocityY: selected.speed * dirY,
+                type: selected.type,
+                element: null
+            };
+
+            const obstacleEl = document.createElement('div');
+            obstacleEl.className = 'obstacle obstacle-' + selected.type;
+            obstacleEl.style.width = obstacle.width + 'px';
+            obstacleEl.style.height = obstacle.height + 'px';
+            obstacleEl.style.left = obstacle.x + 'px';
+            obstacleEl.style.top = obstacle.y + 'px';
+            gameContainer.appendChild(obstacleEl);
+            
+            obstacle.element = obstacleEl;
+            obstacles.push(obstacle);
+        }
+
+        // Spawn powerups
+        function spawnPowerup() {
+            if (Math.random() > 0.98) {
+                // Pick random side: 0=top, 1=bottom, 2=left, 3=right
+                const side = Math.floor(Math.random() * 4);
+                let x, y, velocityX, velocityY;
+                
+                switch(side) {
+                    case 0: // Top - move downward
+                        x = Math.random() * (800 - 25);
+                        y = -25;
+                        velocityX = (Math.random() - 0.5) * 0.5;
+                        velocityY = 2;
+                        break;
+                    case 1: // Bottom - move upward
+                        x = Math.random() * (800 - 25);
+                        y = 600;
+                        velocityX = (Math.random() - 0.5) * 0.5;
+                        velocityY = -2;
+                        break;
+                    case 2: // Left - move rightward
+                        x = -25;
+                        y = Math.random() * (600 - 25);
+                        velocityX = 2;
+                        velocityY = (Math.random() - 0.5) * 0.5;
+                        break;
+                    case 3: // Right - move leftward
+                        x = 800;
+                        y = Math.random() * (600 - 25);
+                        velocityX = -2;
+                        velocityY = (Math.random() - 0.5) * 0.5;
+                        break;
+                }
+                
+                const powerup = {
+                    x: x,
+                    y: y,
+                    width: 25,
+                    height: 25,
+                    velocityX: velocityX,
+                    velocityY: velocityY,
+                    type: 'health',
+                    element: null
+                };
+
+                const powerupEl = document.createElement('div');
+                powerupEl.className = 'powerup';
+                powerupEl.style.left = powerup.x + 'px';
+                powerupEl.style.top = powerup.y + 'px';
+                gameContainer.appendChild(powerupEl);
+                
+                powerup.element = powerupEl;
+                powerups.push(powerup);
+            }
+        }
+
+        // Update obstacles
+        function updateObstacles() {
+            for (let i = obstacles.length - 1; i >= 0; i--) {
+                const obstacle = obstacles[i];
+                obstacle.x += obstacle.velocityX;
+                obstacle.y += obstacle.velocityY;
+                obstacle.element.style.left = obstacle.x + 'px';
+                obstacle.element.style.top = obstacle.y + 'px';
+
+                // Check collision with player
+                if (isColliding(playerObj, obstacle)) {
+                    if (!playerObj.invulnerable) {
+                        playerObj.health--;
+                        playerObj.invulnerable = true;
+                        createExplosionEffect(playerObj.x, playerObj.y, '#ff0000');
+                        setTimeout(() => {
+                            playerObj.invulnerable = false;
+                        }, 1500);
+
+                        if (playerObj.health <= 0) {
+                            endGame();
+                        }
+                    }
+                }
+
+                // Remove if off screen
+                if (obstacle.x > 800 || obstacle.x + obstacle.width < 0 || 
+                    obstacle.y > 600 || obstacle.y + obstacle.height < 0) {
+                    obstacle.element.remove();
+                    obstacles.splice(i, 1);
+                    playerObj.score += 10;
+                }
+            }
+        }
+
+        // Update trail particles
+        function updateTrail() {
+            for (let i = trailParticles.length - 1; i >= 0; i--) {
+                const trail = trailParticles[i];
+                trail.life--;
+                trail.element.style.opacity = trail.life / 30;
+
+                if (trail.life <= 0) {
+                    trail.element.remove();
+                    trailParticles.splice(i, 1);
+                }
+            }
+        }
+
+        // Update powerups
+        function updatePowerups() {
+            for (let i = powerups.length - 1; i >= 0; i--) {
+                const powerup = powerups[i];
+                powerup.x += powerup.velocityX;
+                powerup.y += powerup.velocityY;
+                powerup.element.style.left = powerup.x + 'px';
+                powerup.element.style.top = powerup.y + 'px';
+
+                // Check collision with player
+                if (isColliding(playerObj, powerup)) {
+                    playerObj.health = Math.min(playerObj.health + 1, 3);
+                    createExplosionEffect(powerup.x, powerup.y, '#ffff00');
+                    powerup.element.remove();
+                    powerups.splice(i, 1);
+                    playerObj.score += 50;
+                }
+
+                // Remove if off screen
+                if (powerup.x > 800 || powerup.x + powerup.width < 0 || 
+                    powerup.y > 600 || powerup.y + powerup.height < 0) {
+                    powerup.element.remove();
+                    powerups.splice(i, 1);
+                }
+            }
+        }
+
+        // Update HUD
+        function updateHUD() {
+            scoreDisplay.textContent = 'Score: ' + playerObj.score;
+            
+            let healthText = 'Health: ';
+            for (let i = 0; i < playerObj.health; i++) {
+                healthText += '❤️ ';
+            }
+            healthDisplay.textContent = healthText;
+        }
+
+        // Increase difficulty
+        function increaseDifficulty() {
+            // Progressive projectile spawn increase
+            const scoreThreshold = 100; // Check every 100 points
+            if (playerObj.score % scoreThreshold === 0 && playerObj.score > 0) {
+                spawnRate = Math.max(spawnRate - 1, 10); // Decrease spawn rate more gradually
+            }
+        }
+
+        // Start game with selected difficulty
+        function startGame(selectedDifficulty) {
+            difficulty = selectedDifficulty;
+            document.getElementById('difficultyMenu').style.display = 'none';
+            gameRunning = true;
+            
+            // Set difficulty parameters
+            if (difficulty === 'easy') {
+                spawnRate = 80;
+                playerObj.health = 5;
+            } else if (difficulty === 'normal') {
+                spawnRate = 50;
+                playerObj.health = 3;
+            } else if (difficulty === 'hard') {
+                spawnRate = 30;
+                playerObj.health = 2;
+            }
+            
+            updateHUD();
+            gameLoop();
+        }
+
+        // End game
+        function endGame() {
+            gameRunning = false;
+            gameOverScreen.style.display = 'block';
+            finalScoreDisplay.textContent = 'Final Score: ' + playerObj.score;
+        }
+
+        // Game loop
+        function gameLoop() {
+            if (!gameRunning) {
+                return;
+            }
+
+            frameCounter++;
+
+            // Spawn obstacles
+            if (frameCounter % spawnRate === 0) {
+                spawnObstacle();
+            }
+
+            // Spawn powerups
+            spawnPowerup();
+
+            // Update game objects
+            updatePlayer();
+            updateTrail();
+            updateObstacles();
+            updatePowerups();
+            updateHUD();
+            increaseDifficulty();
+
+            requestAnimationFrame(gameLoop);
+        }
+
+        // Game starts when difficulty is selected
+    </script>
+</body>
+</html>

@@ -1,0 +1,64 @@
+*{box-sizing:border-box}
+html,body{height:100%;margin:0;font-family:system-ui,Segoe UI,Roboto,Arial}
+body{display:flex;flex-direction:column;align-items:center;justify-content:flex-start;background:#0b0f1a;color:#e6eef8}
+#ui{width:100%;max-width:900px;padding:12px;text-align:center}
+#game{background:#071028;border:3px solid #18314a;border-radius:8px;display:block;width:100%;height:640px;max-width:900px}
+#info{font-weight:600;margin-bottom:6px}
+#hint{font-size:13px;color:#9fb0c9}
+
+#health-container{display:flex;align-items:center;justify-content:center;gap:8px;margin-bottom:6px}
+#healthbar{width:220px;height:14px;background:#1b2b3a;border-radius:10px;overflow:hidden;border:1px solid rgba(255,255,255,0.04)}
+#health-fill{height:100%;background:linear-gradient(90deg,#7fe7a3,#3bd07f);transition:width 0.15s}
+#hp-text{font-size:13px;color:#cfeee0}
+
+/* power-up */
+.powerup{width:14px;height:14px;border-radius:3px;box-shadow:0 0 8px rgba(0,0,0,0.3)}
+.powerup.heal{background:linear-gradient(90deg,#8fffb3,#34d07a)}
+
+/* ---------- Menu overlay / polished UI ---------- */
+#menu-overlay{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;padding:24px;z-index:60;pointer-events:auto;background:linear-gradient(180deg,rgba(2,6,20,0.45),rgba(2,6,20,0.55));backdrop-filter:blur(4px);transition:opacity .36s ease,transform .36s ease}
+#menu-overlay.fade-out{animation:menuFadeOut .36s ease forwards}
+
+.menu-card{width:min(720px,94%);max-width:760px;background:linear-gradient(180deg,#0f2636 0%,#081428 100%);border-radius:14px;padding:28px;border:1px solid rgba(255,255,255,0.03);box-shadow:0 18px 60px rgba(2,6,20,0.6);color:#e9f6ff;text-align:center}
+.menu-card .title{margin:0;font-size:40px;letter-spacing:2px}
+.menu-card .subtitle{margin:6px 0 18px;color:#9fb6c9}
+.menu-controls{display:flex;gap:12px;align-items:center;justify-content:center;margin:10px 0}
+.menu-controls label{color:#9fb6c9;font-size:13px}
+.menu-controls input[type="number"]{width:100px;padding:8px 10px;border-radius:8px;border:1px solid rgba(255,255,255,0.04);background:linear-gradient(180deg,#0b1a26,#071426);color:#e6f8ff;font-weight:700;text-align:center;box-shadow:inset 0 1px 0 rgba(255,255,255,0.02)}
+.menu-buttons{display:flex;gap:12px;justify-content:center;margin-top:12px}
+.btn{cursor:pointer;border:0;padding:10px 18px;border-radius:10px;font-weight:700}
+.btn.primary{background:linear-gradient(90deg,#4fdc9a,#2bb67b);color:#042918;box-shadow:0 10px 30px rgba(43,167,115,0.18);transition:transform .12s ease,box-shadow .12s}
+.btn.primary:hover{transform:translateY(-3px);box-shadow:0 18px 40px rgba(43,167,115,0.22)}
+.btn.secondary{background:transparent;border:1px solid rgba(255,255,255,0.05);color:#bcd3e6}
+.menu-hint{margin-top:14px;color:#84a2bf;font-size:13px}
+
+@keyframes menuFadeOut{from{opacity:1;transform:translateY(0) scale(1)}to{opacity:0;transform:translateY(-8px) scale(.996)}}
+
+/* small polish for canvas & UI */
+#game{box-shadow:0 18px 60px rgba(2,6,20,0.6), inset 0 1px 0 rgba(255,255,255,0.02)}
+#ui{backdrop-filter:blur(2px);background:linear-gradient(180deg,rgba(255,255,255,0.01),transparent);border-radius:10px}
+#hint{letter-spacing:0.2px}
+#info{background:linear-gradient(90deg,rgba(255,255,255,0.02),transparent);padding:6px 10px;border-radius:8px;display:inline-block}
+#healthbar{box-shadow:inset 0 1px 0 rgba(255,255,255,0.02)}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.7; }
+}
+
+@keyframes glow {
+  0%, 100% { box-shadow: 0 18px 60px rgba(2,6,20,0.6), inset 0 1px 0 rgba(255,255,255,0.02); }
+  50% { box-shadow: 0 18px 60px rgba(79,220,154,0.3), inset 0 1px 0 rgba(255,255,255,0.02); }
+}
+
+#game {
+  animation: glow 3s ease-in-out infinite;
+}
+
+#health-fill {
+  box-shadow: 0 0 10px rgba(127, 231, 163, 0.6);
+}
+
+.powerup {
+  animation: pulse 0.6s ease-in-out infinite;
+}

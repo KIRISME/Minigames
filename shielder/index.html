@@ -1,0 +1,897 @@
+
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Shield Block Game - Double Shield Fixed</title>
+  <style>
+    body { margin:0; overflow:hidden; background:#111; font-family:Arial; }
+    canvas { display:block; }
+    #restartBtn{
+      position:absolute;
+      top:50%; left:50%;
+      transform:translate(-50%,-50%);
+      padding:12px 24px;
+      font-size:18px;
+      background:#00bfff;
+      border:none;
+      color:#fff;
+      cursor:pointer;
+      display:none;
+    }
+    #difficultyMenu {
+      position:absolute;
+      top:50%; left:50%;
+      transform:translate(-50%,-50%);
+      background:rgba(0,0,0,0.95);
+      color:#00FF00;
+      padding:60px 80px;
+      border-radius:10px;
+      text-align:center;
+      z-index:200;
+      border:3px solid #00FF00;
+    }
+    #difficultyMenu h1 {
+      font-size:40px;
+      margin-bottom:10px;
+      text-shadow:0 0 10px rgba(0,255,0,0.8);
+    }
+    #difficultyMenu p {
+      font-size:16px;
+      margin-bottom:30px;
+      color:#00ff00;
+    }
+    .difficulty-buttons {
+      display:flex;
+      gap:20px;
+      justify-content:center;
+      flex-wrap:wrap;
+    }
+    .difficulty-btn {
+      background:#00FF00;
+      color:#000;
+      border:none;
+      padding:15px 30px;
+      font-size:18px;
+      border-radius:5px;
+      cursor:pointer;
+      font-weight:bold;
+      transition:all 0.3s;
+      min-width:80px;
+    }
+    .difficulty-btn:hover {
+      background:#00cc00;
+      box-shadow:0 0 15px rgba(0,255,0,0.5);
+      transform:scale(1.05);
+    }
+    .projectile-selection {
+      margin-top:40px;
+      text-align:left;
+      display:inline-block;
+    }
+    .projectile-selection h3 {
+      color:#00ff00;
+      margin-bottom:15px;
+      text-align:center;
+      font-size:18px;
+    }
+    .projectile-grid {
+      display:grid;
+      grid-template-columns:repeat(2,1fr);
+      gap:10px;
+      max-width:400px;
+    }
+    .projectile-checkbox {
+      display:flex;
+      align-items:center;
+      gap:10px;
+      padding:8px 12px;
+      background:rgba(0,255,0,0.1);
+      border:2px solid #00ff00;
+      border-radius:5px;
+      cursor:pointer;
+      transition:all 0.2s;
+      color:#00ff00;
+      user-select:none;
+    }
+    .projectile-checkbox:hover {
+      background:rgba(0,255,0,0.2);
+    }
+    .projectile-checkbox input {
+      cursor:pointer;
+      width:18px;
+      height:18px;
+      accent-color:#00ff00;
+    }
+    .projectile-checkbox.disabled {
+      opacity:0.5;
+      cursor:not-allowed;
+    }
+    canvas {
+      filter: drop-shadow(0 0 20px rgba(0, 255, 0, 0.3));
+    }
+    @keyframes bgPulse {
+      0%, 100% { background: linear-gradient(45deg, #0a0e1f, #1a0033); }
+      50% { background: linear-gradient(45deg, #1a0a2e, #2a0a4a); }
+    }
+  </style>
+</head>
+<body>
+
+<canvas id="gameCanvas"></canvas>
+<button id="restartBtn">Restart</button>
+<div id="difficultyMenu">
+  <h1>SELECT SPEED</h1>
+  <p>How fast should the projectiles be?</p>
+  <div class="difficulty-buttons">
+    <button class="difficulty-btn" onclick="startGame(1)">x1</button>
+    <button class="difficulty-btn" onclick="startGame(1.5)">x1.5</button>
+    <button class="difficulty-btn" onclick="startGame(2)">x2</button>
+    <button class="difficulty-btn" onclick="startGame(3)">x3</button>
+    <button class="difficulty-btn" onclick="startGame(5)">x5</button>
+  </div>
+  
+  <div class="projectile-selection">
+    <h3>Projectile Types (min 1)</h3>
+    <div class="projectile-grid" id="projectileGrid"></div>
+  </div>
+</div>
+
+<script>
+const canvas = document.getElementById("gameCanvas");
+const ctx = canvas.getContext("2d");
+const restartBtn = document.getElementById("restartBtn");
+
+canvas.width = window.innerWidth;
+canvas.height = window.innerHeight;
+
+let gameOver = false;
+let score = 0;
+let lastTime = 0;
+let gameRunning = false;
+let difficulty = 1;
+let speedMultiplier = 1;
+let projectileSpawnInterval = 700;
+let powerUpSpawnInterval = 8000;
+let particles = []; // Add particle system
+
+// Projectile type definitions
+const PROJECTILE_TYPES = [
+  { name: 'basic', color: '#FF4C4C', speed: 2.5, radius: 12, damage: 10 },
+  { name: 'fast', color: '#0099FF', speed: 4, radius: 8, damage: 7 },
+  { name: 'heavy', color: '#9900FF', speed: 1.5, radius: 16, damage: 15 },
+  { name: 'splitting', color: '#00FF88', speed: 2.5, radius: 10, damage: 8, splitting: true },
+  { name: 'spiral', color: '#FFFF00', speed: 2, radius: 9, damage: 8, spiral: true },
+  { name: 'avoiding', color: '#FF00FF', speed: 2.8, radius: 11, damage: 9, homing: true },
+  { name: 'split', color: '#FF9900', speed: 2.2, radius: 13, damage: 12, splittable: true },
+  { name: 'electric', color: '#FFFFFF', speed: 2.4, radius: 10, damage: 11, electric: true },
+  { name: 'fragile', color: '#FF1493', speed: 3, radius: 7, damage: 5, fragile: true },
+  { name: 'ice', color: '#00DDFF', speed: 2.3, radius: 11, damage: 8, freeze: true }
+];
+
+// Track which projectile types are enabled
+let enabledProjectiles = {};
+PROJECTILE_TYPES.forEach(type => {
+  enabledProjectiles[type.name] = true; // All enabled by default
+});
+
+// Initialize projectile grid in menu
+function initializeProjectileGrid() {
+  const grid = document.getElementById('projectileGrid');
+  grid.innerHTML = '';
+  PROJECTILE_TYPES.forEach(type => {
+    const label = document.createElement('label');
+    label.className = 'projectile-checkbox';
+    label.innerHTML = `<input type="checkbox" id="proj_${type.name}" checked onchange="toggleProjectile('${type.name}', this)"> 
+                       <span style="color:${type.color}">${type.name}</span>`;
+    grid.appendChild(label);
+  });
+}
+
+function toggleProjectile(typeName, checkbox) {
+  // Count how many are currently enabled
+  const enabledCount = Object.values(enabledProjectiles).filter(v => v).length;
+  
+  // Prevent disabling if it's the last one
+  if(!checkbox.checked && enabledCount === 1) {
+    checkbox.checked = true;
+    alert('At least 1 projectile type must be enabled!');
+    return;
+  }
+  
+  enabledProjectiles[typeName] = checkbox.checked;
+}
+
+const hero = {
+  x: canvas.width/2,
+  y: canvas.height/2,
+  radius: 20,
+  health: 100,
+  maxHealth: 100
+};
+
+const shield = {
+  length: 140,
+  baseLength: 140,
+  width: 14,
+  angle: 0,
+  x: hero.x,
+  y: hero.y,
+  double: false,
+  doubleTimer: 0,
+  lengthTimer: 0
+};
+
+let slowMotion = false;
+let slowTimer = 0;
+
+let healCooldown = 0;
+const HEAL_AMOUNT = 30;
+const HEAL_COOLDOWN_MAX = 1000; // 1 second in milliseconds
+
+let mouseX = hero.x;
+let mouseY = hero.y;
+
+const projectiles = [];
+const powerUps = [];
+
+window.addEventListener("mousemove", e=>{
+  mouseX=e.clientX;
+  mouseY=e.clientY;
+});
+
+window.addEventListener("resize", ()=>{
+  canvas.width=window.innerWidth;
+  canvas.height=window.innerHeight;
+  hero.x=canvas.width/2;
+  hero.y=canvas.height/2;
+});
+
+window.addEventListener("keydown", (e)=>{
+  if(gameRunning && !gameOver && e.code === "Space") {
+    e.preventDefault();
+    if(healCooldown <= 0) {
+      hero.health = Math.min(hero.maxHealth, hero.health + HEAL_AMOUNT);
+      healCooldown = HEAL_COOLDOWN_MAX;
+      createParticles(hero.x, hero.y, '#00FF00', 10);
+    }
+  }
+});
+
+function spawnProjectile(){
+  const edge=Math.floor(Math.random()*4);
+  let x,y;
+
+  if(edge===0){x=0;y=Math.random()*canvas.height;}
+  if(edge===1){x=canvas.width;y=Math.random()*canvas.height;}
+  if(edge===2){x=Math.random()*canvas.width;y=0;}
+  if(edge===3){x=Math.random()*canvas.width;y=canvas.height;}
+
+  const angle=Math.atan2(hero.y-y,hero.x-x);
+  
+  // Filter to only enabled projectile types
+  const enabledTypes = PROJECTILE_TYPES.filter(t => enabledProjectiles[t.name]);
+  if(enabledTypes.length === 0) return; // Safety check
+  
+  const type = enabledTypes[Math.floor(Math.random() * enabledTypes.length)];
+  const speed = type.speed * speedMultiplier;
+
+  projectiles.push({
+    x, y,
+    vx: Math.cos(angle) * speed,
+    vy: Math.sin(angle) * speed,
+    radius: type.radius,
+    color: type.color,
+    damage: type.damage,
+    trail: [],
+    type: type.name,
+    bouncy: type.bouncy || false,
+    spiral: type.spiral || false,
+    spiralPhase: 0,
+    homing: type.homing || false,
+    splittable: type.splittable || false,
+    splitting: type.splitting || false,
+    splitCount: 0,
+    electric: type.electric || false,
+    fragile: type.fragile || false,
+    freeze: type.freeze || false,
+    health: type.fragile ? 2 : 999
+  });
+}
+
+function spawnPowerUp(){
+  const edge=Math.floor(Math.random()*4);
+  let x,y;
+
+  if(edge===0){x=0;y=Math.random()*canvas.height;}
+  if(edge===1){x=canvas.width;y=Math.random()*canvas.height;}
+  if(edge===2){x=Math.random()*canvas.width;y=0;}
+  if(edge===3){x=Math.random()*canvas.width;y=canvas.height;}
+
+  const angle=Math.atan2(hero.y-y,hero.x-x);
+
+  // Equal chance for all powerups
+  const types=["HEAL","DOUBLE","SLOW","SHOCK","LONG"];
+  const type=types[Math.floor(Math.random()*types.length)];
+
+  powerUps.push({
+    x,y,
+    vx:Math.cos(angle)*2,
+    vy:Math.sin(angle)*2,
+    radius:16,
+    type,
+    trail:[]
+  });
+}
+
+let projectileTimer = 0;
+let powerUpTimer = 0;
+
+function startGame(selectedSpeed) {
+  speedMultiplier = selectedSpeed;
+  difficulty = selectedSpeed;
+  document.getElementById('difficultyMenu').style.display = 'none';
+  gameRunning = true;
+  
+  projectileSpawnInterval = 700;
+  powerUpSpawnInterval = 8000;
+  
+  gameLoop(0);
+}
+
+function activatePowerUp(type){
+  if(type==="HEAL"){
+    hero.health=Math.min(hero.maxHealth,hero.health+30);
+  }
+  if(type==="DOUBLE"){
+    shield.double=true;
+    shield.doubleTimer=600;
+  }
+  if(type==="SLOW"){
+    slowMotion=true;
+    slowTimer=600;
+  }
+  if(type==="SHOCK"){
+    projectiles.forEach(p=>{
+      const dx=p.x-hero.x;
+      const dy=p.y-hero.y;
+      const d=Math.hypot(dx,dy)||1;
+      p.vx=(dx/d)*6;
+      p.vy=(dy/d)*6;
+    });
+  }
+  if(type==="LONG"){
+    shield.length=220;
+    shield.lengthTimer=600;
+  }
+}
+
+function createParticles(x, y, color, count) {
+  // Reduce particle count by 60%
+  count = Math.floor(count * 0.4);
+  for (let i = 0; i < count; i++) {
+    const angle = Math.random() * Math.PI * 2;
+    const speed = 2 + Math.random() * 4;
+    particles.push({
+      x: x,
+      y: y,
+      vx: Math.cos(angle) * speed,
+      vy: Math.sin(angle) * speed,
+      radius: 3 + Math.random() * 3,
+      color: color,
+      life: 40,
+      maxLife: 40
+    });
+  }
+}
+
+function updateParticles() {
+  for (let i = particles.length - 1; i >= 0; i--) {
+    const p = particles[i];
+    p.x += p.vx;
+    p.y += p.vy;
+    p.vy += 0.1; // gravity
+    p.life--;
+    
+    if (p.life <= 0) {
+      particles.splice(i, 1);
+    }
+  }
+}
+
+function drawParticles() {
+  particles.forEach(p => {
+    ctx.globalAlpha = p.life / p.maxLife;
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, p.radius, 0, Math.PI * 2);
+    ctx.fillStyle = p.color;
+    ctx.fill();
+  });
+  ctx.globalAlpha = 1;
+}
+
+function handleShieldCollision(obj, angle, shieldPos, isPower=false){
+  // shieldPos = {x,y}
+  const half=shield.length/2;
+
+  const x1=shieldPos.x+Math.cos(angle)*(-half);
+  const y1=shieldPos.y+Math.sin(angle)*(-half);
+  const x2=shieldPos.x+Math.cos(angle)*(half);
+  const y2=shieldPos.y+Math.sin(angle)*(half);
+
+  const dx=x2-x1;
+  const dy=y2-y1;
+
+  const t=((obj.x-x1)*dx+(obj.y-y1)*dy)/(dx*dx+dy*dy);
+  const tC=Math.max(0,Math.min(1,t));
+
+  const cx=x1+tC*dx;
+  const cy=y1+tC*dy;
+
+  const dist=Math.hypot(obj.x-cx,obj.y-cy);
+
+  if(dist<obj.radius+shield.width/2){
+    if(isPower){
+      activatePowerUp(obj.type);
+      createParticles(obj.x, obj.y, '#FFD700', 6);
+      return true;
+    }else{
+      const nx=(obj.x-cx)/dist;
+      const ny=(obj.y-cy)/dist;
+      const speed=Math.hypot(obj.vx,obj.vy);
+      
+      // Handle splitting projectiles - create 3 new ones immediately when hitting shield
+      if(obj.splitting && obj.splitCount < 5) {
+        const angleToPlayer = Math.atan2(hero.y - obj.y, hero.x - obj.x);
+        
+        for(let i = -1; i <= 1; i++) {
+          const spreadAngle = angleToPlayer + (i * 0.25);
+          const newProj = {
+            x: obj.x,
+            y: obj.y,
+            vx: Math.cos(spreadAngle) * speed,
+            vy: Math.sin(spreadAngle) * speed,
+            radius: obj.radius,
+            color: obj.color,
+            damage: obj.damage,
+            trail: [],
+            type: obj.type,
+            bouncy: false,
+            spiral: false,
+            spiralPhase: 0,
+            homing: false,
+            splittable: false,
+            splitting: true,
+            splitCount: obj.splitCount + 1,
+            electric: false,
+            fragile: false,
+            freeze: false,
+            health: 999
+          };
+          projectiles.push(newProj);
+        }
+        createParticles(obj.x, obj.y, obj.color, 8);
+        return 'split'; // Special return to indicate split happened
+      } else {
+        // Normal reflection for non-splitting or max split count reached
+        obj.vx=nx*speed;
+        obj.vy=ny*speed;
+        score += 10;
+        createParticles(cx, cy, '#00BFFF', 4);
+        return true; // Indicate projectile was blocked
+      }
+    }
+  }
+  return false;
+}
+
+function handleProjectileCollisions(){
+  for(let i=projectiles.length-1;i>=0;i--){
+    if(!projectiles[i]) continue;
+    for(let j=projectiles.length-1;j>i;j--){
+      if(!projectiles[j]) continue;
+      const p1=projectiles[i];
+      const p2=projectiles[j];
+      const dx=p2.x-p1.x;
+      const dy=p2.y-p1.y;
+      const dist=Math.hypot(dx,dy);
+      const minDist=p1.radius+p2.radius;
+
+      if(dist<minDist){
+        // If either projectile is splitting (green), it explodes on contact
+        if(p1.splitting || p2.splitting){
+          if(p1.splitting){
+            // Create ring of new green projectiles if split count allows
+            if(p1.splitCount < 2){
+              const ringCount = 8;
+              const speed = Math.hypot(p1.vx, p1.vy);
+              for(let k = 0; k < ringCount; k++){
+                const angle = (k / ringCount) * Math.PI * 2;
+                const newProj = {
+                  x: p1.x,
+                  y: p1.y,
+                  vx: Math.cos(angle) * speed,
+                  vy: Math.sin(angle) * speed,
+                  radius: p1.radius,
+                  color: p1.color,
+                  damage: p1.damage,
+                  trail: [],
+                  type: p1.type,
+                  bouncy: false,
+                  spiral: false,
+                  spiralPhase: 0,
+                  homing: false,
+                  splittable: false,
+                  splitting: true,
+                  splitCount: p1.splitCount + 1,
+                  electric: false,
+                  fragile: false,
+                  freeze: false,
+                  health: 999
+                };
+                projectiles.push(newProj);
+              }
+            }
+            createParticles(p1.x, p1.y, p1.color, 10);
+            projectiles.splice(i, 1);
+            if(j > i) j--; // Adjust j if we removed earlier element
+          }
+          if(p2.splitting && projectiles[j]){
+            // Create ring of new green projectiles if split count allows
+            if(p2.splitCount < 2){
+              const ringCount = 8;
+              const speed = Math.hypot(p2.vx, p2.vy);
+              for(let k = 0; k < ringCount; k++){
+                const angle = (k / ringCount) * Math.PI * 2;
+                const newProj = {
+                  x: p2.x,
+                  y: p2.y,
+                  vx: Math.cos(angle) * speed,
+                  vy: Math.sin(angle) * speed,
+                  radius: p2.radius,
+                  color: p2.color,
+                  damage: p2.damage,
+                  trail: [],
+                  type: p2.type,
+                  bouncy: false,
+                  spiral: false,
+                  spiralPhase: 0,
+                  homing: false,
+                  splittable: false,
+                  splitting: true,
+                  splitCount: p2.splitCount + 1,
+                  electric: false,
+                  fragile: false,
+                  freeze: false,
+                  health: 999
+                };
+                projectiles.push(newProj);
+              }
+            }
+            createParticles(p2.x, p2.y, p2.color, 10);
+            projectiles.splice(j, 1);
+          }
+          continue;
+        }
+        
+        // Normal bounce for non-splitting projectiles
+        const nx=dx/dist;
+        const ny=dy/dist;
+
+        const p = 2*(p1.vx*nx + p1.vy*ny - p2.vx*nx - p2.vy*ny) / 2;
+
+        p1.vx -= p*nx;
+        p1.vy -= p*ny;
+        p2.vx += p*nx;
+        p2.vy += p*ny;
+
+        const overlap=minDist-dist;
+        p1.x -= nx*(overlap/2);
+        p1.y -= ny*(overlap/2);
+        p2.x += nx*(overlap/2);
+        p2.y += ny*(overlap/2);
+      }
+    }
+  }
+}
+
+function updateProjectiles(){
+  for(let i=projectiles.length-1;i>=0;i--){
+    const p=projectiles[i];
+    const slow=slowMotion?0.5:1;
+
+    // Special behavior for spiral projectiles
+    if(p.spiral) {
+      p.spiralPhase += 0.1;
+      const spiralOffset = Math.sin(p.spiralPhase) * 3;
+      const perpX = -p.vy;
+      const perpY = p.vx;
+      const perpLen = Math.hypot(perpX, perpY) || 1;
+      p.x += (p.vx + (perpX/perpLen)*spiralOffset)*slow;
+      p.y += (p.vy + (perpY/perpLen)*spiralOffset)*slow;
+    }
+    
+    // Special behavior for homing projectiles (shield-avoiding)
+    if(p.homing) {
+      // Always move towards player
+      const playerDx = hero.x - p.x;
+      const playerDy = hero.y - p.y;
+      const playerDist = Math.hypot(playerDx, playerDy) || 1;
+      const baseSpeed = 0.15;
+      p.vx += (playerDx/playerDist) * baseSpeed;
+      p.vy += (playerDy/playerDist) * baseSpeed;
+      
+      // But avoid shield if it's pointing at us
+      const shieldDx = shield.x - p.x;
+      const shieldDy = shield.y - p.y;
+      const distToShield = Math.hypot(shieldDx, shieldDy) || 1;
+      
+      const angleToProjectile = Math.atan2(shieldDy, shieldDx);
+      const angleDifference = Math.abs(shield.angle - angleToProjectile);
+      const normalizedAngleDiff = Math.min(angleDifference, Math.PI * 2 - angleDifference);
+      
+      // If shield is pointing at this projectile, dodge to the side
+      if(normalizedAngleDiff < Math.PI / 4) { // 45 degree cone
+        const perpX = Math.cos(shield.angle + Math.PI / 2);
+        const perpY = Math.sin(shield.angle + Math.PI / 2);
+        p.vx += perpX * 0.2;
+        p.vy += perpY * 0.2;
+      }
+      
+      // Avoid other projectiles
+      for(let j = 0; j < projectiles.length; j++) {
+        if(i !== j) {
+          const other = projectiles[j];
+          const pdx = p.x - other.x;
+          const pdy = p.y - other.y;
+          const pdist = Math.hypot(pdx, pdy) || 1;
+          if(pdist < 40) { // Avoid if closer than 40 pixels
+            p.vx += (pdx/pdist) * 0.2;
+            p.vy += (pdy/pdist) * 0.2;
+          }
+        }
+      }
+      
+      p.x += p.vx * slow;
+      p.y += p.vy * slow;
+    }
+    else {
+      p.x+=p.vx*slow;
+      p.y+=p.vy*slow;
+    }
+
+    p.trail.push({x:p.x,y:p.y});
+    if(p.trail.length>12)p.trail.shift();
+
+    // Main shield
+    const mainShieldPos = {x: shield.x, y: shield.y};
+
+    // Double shield behind hero
+    const behindShieldPos = {
+      x: hero.x - Math.cos(shield.angle - Math.PI/2)*hero.radius,
+      y: hero.y - Math.sin(shield.angle - Math.PI/2)*hero.radius
+    };
+
+    let isBlocked = false;
+    isBlocked = handleShieldCollision(p, shield.angle, mainShieldPos);
+    if(!isBlocked && shield.double){
+      isBlocked = handleShieldCollision(p, shield.angle + Math.PI, behindShieldPos);
+    }
+
+    // Remove original splitting projectile after it splits
+    if(isBlocked === 'split') {
+      projectiles.splice(i, 1);
+      continue;
+    }
+
+    // Only damage if not blocked by shield
+    if(!isBlocked) {
+      const dist=Math.hypot(p.x-hero.x,p.y-hero.y);
+      if(dist<hero.radius+p.radius){
+        hero.health-=p.damage;
+        projectiles.splice(i,1);
+        if(hero.health<=0){
+          hero.health=0;
+          gameOver=true;
+          restartBtn.style.display="block";
+        }
+      }
+    }
+  }
+}
+
+function updatePowerUps(){
+  for(let i=powerUps.length-1;i>=0;i--){
+    const pu=powerUps[i];
+
+    pu.x+=pu.vx;
+    pu.y+=pu.vy;
+
+    pu.trail.push({x:pu.x,y:pu.y});
+    if(pu.trail.length>12)pu.trail.shift();
+
+    const mainShieldPos = {x: shield.x, y: shield.y};
+    const behindShieldPos = {
+      x: hero.x - Math.cos(shield.angle - Math.PI/2)*hero.radius,
+      y: hero.y - Math.sin(shield.angle - Math.PI/2)*hero.radius
+    };
+
+    const blocked =
+      handleShieldCollision(pu, shield.angle, mainShieldPos, true) ||
+      (shield.double && handleShieldCollision(pu, shield.angle + Math.PI, behindShieldPos, true));
+
+    if(blocked){
+      powerUps.splice(i,1);
+      continue;
+    }
+
+    const dist=Math.hypot(pu.x-hero.x,pu.y-hero.y);
+    if(dist<hero.radius+pu.radius){
+      powerUps.splice(i,1);
+    }
+  }
+
+  if(shield.double && --shield.doubleTimer<=0) shield.double=false;
+  if(slowMotion && --slowTimer<=0) slowMotion=false;
+  if(shield.length!==shield.baseLength && --shield.lengthTimer<=0)
+    shield.length=shield.baseLength;
+  if(healCooldown > 0) healCooldown--;
+}
+
+function update(delta){
+  if(!gameRunning || gameOver) return;
+
+  score+=delta*0.02;
+
+  // Handle projectile spawning
+  projectileTimer += delta;
+  if (projectileTimer >= projectileSpawnInterval) {
+    spawnProjectile();
+    projectileTimer = 0;
+  }
+
+  // Handle power-up spawning
+  powerUpTimer += delta;
+  if (powerUpTimer >= powerUpSpawnInterval) {
+    spawnPowerUp();
+    powerUpTimer = 0;
+  }
+
+  const mouseAngle=Math.atan2(mouseY-hero.y,mouseX-hero.x);
+  shield.angle=mouseAngle+Math.PI/2;
+
+  const offsetX=Math.cos(mouseAngle)*hero.radius;
+  const offsetY=Math.sin(mouseAngle)*hero.radius;
+
+  shield.x=hero.x+offsetX;
+  shield.y=hero.y+offsetY;
+
+  updateProjectiles();
+  updatePowerUps();
+  updateParticles();
+  handleProjectileCollisions();
+}
+
+function drawTrail(obj,color){
+  for(let i=0;i<obj.trail.length;i++){
+    ctx.globalAlpha=i/obj.trail.length;
+    ctx.beginPath();
+    ctx.arc(obj.trail[i].x,obj.trail[i].y,obj.radius*0.6,0,Math.PI*2);
+    ctx.fillStyle=color;
+    ctx.fill();
+  }
+  ctx.globalAlpha=1;
+}
+
+function drawShield(angle,color,shieldPos){
+  ctx.save();
+  ctx.translate(shieldPos.x,shieldPos.y);
+  ctx.rotate(angle);
+  ctx.strokeStyle=color;
+  ctx.lineWidth=shield.width;
+  ctx.beginPath();
+  ctx.moveTo(-shield.length/2,0);
+  ctx.lineTo(shield.length/2,0);
+  ctx.stroke();
+  ctx.restore();
+}
+
+function draw(){
+  ctx.clearRect(0,0,canvas.width,canvas.height);
+
+  ctx.fillStyle="#4CAF50";
+  ctx.beginPath();
+  ctx.arc(hero.x,hero.y,hero.radius,0,Math.PI*2);
+  ctx.fill();
+
+  const mainShieldPos = {x: shield.x, y: shield.y};
+  const behindShieldPos = {
+    x: hero.x - Math.cos(shield.angle - Math.PI/2)*hero.radius,
+    y: hero.y - Math.sin(shield.angle - Math.PI/2)*hero.radius
+  };
+
+  drawShield(shield.angle, "#00BFFF", mainShieldPos);
+
+  if(shield.double){
+    drawShield(shield.angle + Math.PI, "#00FFFF", behindShieldPos);
+  }
+
+  projectiles.forEach(p=>{
+    drawTrail(p,p.color);
+    ctx.beginPath();
+    ctx.arc(p.x,p.y,p.radius,0,Math.PI*2);
+    ctx.fillStyle=p.color;
+    ctx.fill();
+  });
+
+  powerUps.forEach(pu=>{
+    drawTrail(pu,"white");
+
+    ctx.beginPath();
+    ctx.arc(pu.x,pu.y,pu.radius,0,Math.PI*2);
+    ctx.fillStyle="#222";
+    ctx.fill();
+
+    ctx.fillStyle="#fff";
+    ctx.font="10px Arial";
+    ctx.textAlign="center";
+    ctx.fillText(pu.type,pu.x,pu.y+3);
+  });
+
+  drawParticles();
+
+  ctx.fillStyle="#fff";
+  ctx.font="24px Arial";
+  ctx.textAlign="left";
+  ctx.fillText("Score: "+Math.floor(score),20,40);
+
+  // Draw heal cooldown indicator
+  const healText = healCooldown > 0 ? "HEAL: " + (healCooldown/1000).toFixed(1) + "s" : "HEAL: READY (SPACE)";
+  const healColor = healCooldown > 0 ? "#FF6666" : "#66FF66";
+  ctx.fillStyle = healColor;
+  ctx.font = "14px Arial";
+  ctx.fillText(healText, 20, 70);
+
+  drawHealthBar();
+}
+
+function drawHealthBar(){
+  const width=300,height=20;
+  ctx.fillStyle="#333";
+  ctx.fillRect(canvas.width/2-width/2,20,width,height);
+  ctx.fillStyle="#4CAF50";
+  ctx.fillRect(canvas.width/2-width/2,20,width*(hero.health/hero.maxHealth),height);
+  ctx.strokeStyle="#fff";
+  ctx.strokeRect(canvas.width/2-width/2,20,width,height);
+}
+
+function gameLoop(timestamp){
+  const delta=timestamp-lastTime;
+  lastTime=timestamp;
+  update(delta);
+  draw();
+  requestAnimationFrame(gameLoop);
+}
+
+restartBtn.addEventListener("click",()=>{
+  projectiles.length=0;
+  powerUps.length=0;
+  particles.length=0;
+  hero.health=100;
+  score=0;
+  gameOver=false;
+  projectileTimer=0;
+  powerUpTimer=0;
+  healCooldown=0;
+  restartBtn.style.display="none";
+  startGame(difficulty);
+});
+
+// Game starts when difficulty is selected
+// Initialize the projectile grid on page load
+document.addEventListener('DOMContentLoaded', initializeProjectileGrid);
+// Also call it immediately in case DOM is already loaded
+initializeProjectileGrid();
+</script>
+
+</body>
+</html>

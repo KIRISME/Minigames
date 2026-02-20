@@ -1,0 +1,1034 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>thw platform rage game</title>
+<link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=Press+Start+2P&display=swap" rel="stylesheet">
+<style>
+  html, body {
+    margin: 0;
+    padding: 0;
+    overflow: hidden;
+    background: #111;
+    font-family: 'Orbitron', sans-serif;
+  }
+  canvas {
+    display: block;
+    background: linear-gradient(135deg, #1a0033, #000);
+    filter: drop-shadow(0 0 20px rgba(0, 255, 255, 0.2));
+  }
+  
+  @keyframes float {
+    0%, 100% { transform: translateY(0px); }
+    50% { transform: translateY(-30px); }
+  }
+  
+  @keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.6; }
+  }
+  
+  @keyframes glitch {
+    0% { filter: hue-rotate(0deg); }
+    50% { filter: hue-rotate(10deg); }
+    100% { filter: hue-rotate(0deg); }
+  }
+</style>
+</head>
+<body>
+
+<canvas id="game"></canvas>
+
+<script>
+const canvas = document.getElementById("game");
+const ctx = canvas.getContext("2d");
+
+function resize() {
+  canvas.width = window.innerWidth;
+  canvas.height = window.innerHeight;
+}
+window.addEventListener("resize", resize);
+resize();
+
+// ---------- GAME STATES ----------
+let gameState = "menu"; // menu, playing, gameover
+let chosenSpeed = 1;
+let fadeAlpha = 0;
+let isFadingIn = false;
+let isFadingOut = false;
+let nextGameState = null;
+
+// ---------- DEMO MODE ----------
+let demoActive = false;
+let demoPlayer = null;
+let demoPlatforms = [];
+let demoWalls = [];
+let demoTrail = [];
+let demoParticles = [];
+let demoSpikeWall = { x: 0, width: 40 };
+let demoScore = 0;
+let demoScrollSpeed = 3.5;
+let demoPlatformGapCounter = 0;
+
+// ---------- CONSTANTS ----------
+const GRAVITY = 0.55;
+const JUMP_FORCE = -22;
+const MOVE_SPEED = 5;
+let scrollSpeed = 3.5;
+const PLATFORM_GAP = 150;
+const BASE_WIDTH = 120;
+const PLATFORM_HEIGHT = 20;
+
+// ---------- PLAYER ----------
+let player;
+
+// ---------- SCORE ----------
+let score = 0;
+
+// ---------- INPUT ----------
+const keys = {};
+addEventListener("keydown", e => {
+  keys[e.key.toLowerCase()] = true;
+  if (gameState === "playing") {
+    if (e.key === " " || e.key.toLowerCase() === "w" || e.key === "ArrowUp") {
+      player.jumpBuffer = 8;
+      player.jumpHeld = true;
+    }
+  }
+});
+addEventListener("keyup", e => {
+  keys[e.key.toLowerCase()] = false;
+  if (gameState === "playing") {
+    if (e.key === " " || e.key.toLowerCase() === "w" || e.key === "ArrowUp") {
+      player.jumpHeld = false;
+    }
+  }
+});
+
+// ---------- PLATFORM TYPES ----------
+const PLATFORM_TYPES = [
+  "normal","bouncy","fragile","moving","spinning",
+  "disappearing","falling","ice","tiny",
+  "lava","spring","slow","crumbly"
+];
+
+const PLATFORM_COLORS = {
+  normal: "#777",
+  bouncy: "#00ff88",
+  fragile: "#ff4444",
+  moving: "#3399ff",
+  spinning: "#aa66ff",
+  disappearing: "#ffee00",
+  falling: "#ff9900",
+  ice: "#00ffff",
+  tiny: "#ffffff",
+  lava: "#990000",
+  spring: "#66ff00",
+  slow: "#0033aa",
+  crumbly: "#8b5a2b"
+};
+
+let platforms = [];
+let walls = [];
+let trail = [];
+let particles = [];
+let stars = [];
+
+// ---------- SPIKE WALL ----------
+const spikeWall = { x: 0, width: 40 };
+
+// ---------- BUTTONS ----------
+const buttons = {
+  speed1: {x:0,y:0,w:180,h:60, text:"Speed 1"},
+  speed2: {x:0,y:0,w:180,h:60, text:"Speed 2"},
+  speed3: {x:0,y:0,w:180,h:60, text:"Speed 3"},
+  playAgain: {x:0,y:0,w:240,h:60, text:"Play Again"},
+  menu: {x:0,y:0,w:240,h:60, text:"Menu"}
+};
+
+// ---------- FUNCTIONS ----------
+function randomPlatformType() {
+  return PLATFORM_TYPES[Math.floor(Math.random() * PLATFORM_TYPES.length)];
+}
+
+function spawnPlatform(x, forcedType = null) {
+  const type = forcedType || randomPlatformType();
+  platforms.push({
+    x,
+    y: canvas.height - 200 - Math.random() * 250,
+    w: type === "tiny" ? 60 : BASE_WIDTH,
+    h: PLATFORM_HEIGHT,
+    type,
+    broken: false,
+    baseY: null,
+    dir: Math.random() < 0.5 ? -1 : 1,
+    angle: 0,
+    timer: 0,
+    vy: 0,
+    shake: 0,
+    scored: false
+  });
+}
+
+function spawnWall(x) {
+  const h = 80 + Math.random() * 220;
+  walls.push({
+    x,
+    y: Math.random() * (canvas.height - h - 60) + 30,
+    w: 30,
+    h
+  });
+}
+
+function spawnParticles(x, y, color) {
+  for (let i = 0; i < 10; i++) {
+    particles.push({
+      x, y,
+      vx: (Math.random() - 0.5) * 4,
+      vy: (Math.random() - 0.5) * 4,
+      life: 30 + Math.random() * 30,
+      color
+    });
+  }
+}
+
+function initStars() {
+  stars = [];
+  for (let i = 0; i < 120; i++) {
+    stars.push({
+      x: Math.random() * canvas.width,
+      y: Math.random() * canvas.height,
+      size: Math.random() * 2,
+      speed: 0.2 + Math.random() * 0.6
+    });
+  }
+}
+
+function initDemoGame() {
+  demoActive = true;
+  demoPlayer = {
+    x: 260,
+    y: canvas.height - 250,
+    prevY: canvas.height - 250,
+    r: 15,
+    vy: 0,
+    vx: 0,
+    onGround: false,
+    onIce: false,
+    coyote: 0,
+    jumpBuffer: 0,
+    jumpHeld: false
+  };
+
+  demoPlatforms = [];
+  demoWalls = [];
+  demoTrail = [];
+  demoParticles = [];
+  demoScore = 0;
+  demoPlatformGapCounter = 0;
+  demoSpikeWall.x = 0;
+  demoScrollSpeed = 3.5;
+
+  // Create initial demo platforms showing all types (except lava)
+  const demoTypes = ["normal", "bouncy", "fragile", "moving", "spinning", "disappearing", "falling", "ice", "tiny", "spring", "slow", "crumbly"];
+  const BASE_WIDTH = 120;
+  const PLATFORM_HEIGHT = 20;
+  const PLATFORM_GAP = 150;
+  
+  let x = 150;
+  demoTypes.forEach(type => {
+    demoPlatforms.push({
+      x,
+      y: canvas.height - 180,
+      w: type === "tiny" ? 60 : BASE_WIDTH,
+      h: PLATFORM_HEIGHT,
+      type,
+      broken: false,
+      baseY: null,
+      dir: Math.random() < 0.5 ? -1 : 1,
+      angle: 0,
+      timer: 0,
+      vy: 0,
+      shake: 0,
+      scored: false
+    });
+    x += PLATFORM_GAP;
+  });
+}
+
+function updateDemoGame() {
+  if (!demoActive) return;
+
+  // Auto jump
+  demoPlayer.prevY = demoPlayer.y;
+  demoPlayer.vy += GRAVITY;
+  demoPlayer.y += demoPlayer.vy;
+  
+  // Wrap-around vertical screen
+  if (demoPlayer.y - demoPlayer.r > canvas.height) {
+    demoPlayer.y = -demoPlayer.r;
+    demoPlayer.vy = 0;
+  }
+
+  demoPlayer.onGround = false;
+  demoPlayer.onIce = false;
+  demoPlayer.coyote = demoPlayer.onGround ? 8 : demoPlayer.coyote - 1;
+
+  // Demo trail
+  demoTrail.push({ x: demoPlayer.x, y: demoPlayer.y, life: 25 });
+  if (demoTrail.length > 35) demoTrail.shift();
+
+  // Update platforms
+  demoPlatforms.forEach(p => {
+    p.x -= demoScrollSpeed;
+    if (p.type === "moving") {
+      if (!p.baseY) p.baseY = p.y;
+      p.y += p.dir * 1.2;
+      if (Math.abs(p.y - p.baseY) > 40) p.dir *= -1;
+    }
+    if (p.type === "spinning") p.angle += 0.05;
+    if (p.type === "falling" && p.timer > 0) {
+      p.vy += 0.4;
+      p.y += p.vy;
+    }
+    if (p.type === "crumbly" && p.shake > 0) {
+      p.shake--;
+      if (p.shake <= 0) p.broken = true;
+    }
+  });
+
+  // Platform collision
+  demoPlatforms.forEach(p => {
+    const wasAbove = demoPlayer.prevY + demoPlayer.r <= p.y;
+    const falling = demoPlayer.vy >= 0;
+
+    if (
+      wasAbove &&
+      falling &&
+      demoPlayer.x + demoPlayer.r > p.x &&
+      demoPlayer.x - demoPlayer.r < p.x + p.w &&
+      demoPlayer.y + demoPlayer.r >= p.y &&
+      demoPlayer.y + demoPlayer.r <= p.y + p.h + 10
+    ) {
+      demoPlayer.y = p.y - demoPlayer.r;
+      demoPlayer.onGround = true;
+      demoPlayer.vy = 0;
+
+      switch (p.type) {
+        case "bouncy": demoPlayer.vy = -46; break;
+        case "fragile": p.broken = true; break;
+        case "falling": if (!p.timer) p.timer = 1; break;
+        case "disappearing": p.broken = true; break;
+        case "ice": demoPlayer.onIce = true; break;
+        case "spring": demoPlayer.vy = -65; break;
+        case "slow": break;
+        case "crumbly": p.shake = 30; break;
+      }
+      // Auto jump continuously
+      if (demoPlayer.coyote > 0) {
+        demoPlayer.vy = JUMP_FORCE;
+        demoPlayer.coyote = 0;
+      }
+    }
+  });
+
+  // Auto-jump when on a platform
+  if (demoPlayer.onGround) {
+    demoPlayer.vy = JUMP_FORCE;
+  }
+
+  // Remove old platforms and spawn new ones
+  demoPlatforms = demoPlatforms.filter(p => p.x + p.w > demoSpikeWall.x && !p.broken);
+  
+  const last = demoPlatforms[demoPlatforms.length - 1];
+  if (last && last.x < canvas.width) {
+    demoPlatformGapCounter++;
+    const demoTypes = ["normal", "bouncy", "fragile", "moving", "spinning", "disappearing", "falling", "ice", "tiny", "spring", "slow", "crumbly"];
+    const nextType = demoTypes[demoPlatformGapCounter % demoTypes.length];
+    
+    const newPlatform = {
+      x: last.x + PLATFORM_GAP,
+      y: canvas.height - 180,
+      w: nextType === "tiny" ? 60 : BASE_WIDTH,
+      h: PLATFORM_HEIGHT,
+      type: nextType,
+      broken: false,
+      baseY: null,
+      dir: Math.random() < 0.5 ? -1 : 1,
+      angle: 0,
+      timer: 0,
+      vy: 0,
+      shake: 0,
+      scored: false
+    };
+    demoPlatforms.push(newPlatform);
+  }
+
+  // Keep lava wall fixed at the back
+  demoSpikeWall.x = 0;
+}
+
+function drawDemoGameplay() {
+  // background stars - twinkling effect
+  stars.forEach(s => {
+    const twinkle = Math.sin(Date.now() * 0.004 + s.x) * 0.2 + 0.3;
+    ctx.fillStyle = "rgba(255,255,255," + (twinkle * 0.3) + ")";
+    ctx.fillRect(s.x, s.y, s.size, s.size);
+  });
+
+  // lava wall with spikes
+  const spikeGrad = ctx.createLinearGradient(demoSpikeWall.x, 0, demoSpikeWall.x + demoSpikeWall.width, 0);
+  spikeGrad.addColorStop(0, "#a00");
+  spikeGrad.addColorStop(0.5, "#800");
+  spikeGrad.addColorStop(1, "#600");
+  ctx.fillStyle = spikeGrad;
+  ctx.fillRect(demoSpikeWall.x, 0, demoSpikeWall.width, canvas.height);
+  
+  // Add spikes to lava wall
+  ctx.fillStyle = "#600";
+  for (let y = 0; y < canvas.height; y += 30) {
+    ctx.beginPath();
+    ctx.moveTo(demoSpikeWall.x + demoSpikeWall.width, y);
+    ctx.lineTo(demoSpikeWall.x + demoSpikeWall.width + 10, y + 15);
+    ctx.lineTo(demoSpikeWall.x + demoSpikeWall.width, y + 30);
+    ctx.fill();
+  }
+
+  // Demo platforms with decorations
+  demoPlatforms.forEach(p => {
+    drawPlatformWithDetails(p);
+  });
+
+  // Demo trail
+  const trailOffset = 1.2;
+  for (let i = 0; i < demoTrail.length; i++) {
+    const t = demoTrail[i];
+    const stretch = trailOffset * (demoTrail.length - i);
+    ctx.fillStyle = "rgba(0,255,255," + ((t.life / 25) * 0.5) + ")";
+    ctx.beginPath();
+    ctx.arc(t.x - stretch, t.y, demoPlayer.r - 3, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  // Demo player
+  ctx.fillStyle = "#0ff";
+  ctx.beginPath();
+  ctx.arc(demoPlayer.x, demoPlayer.y, demoPlayer.r, 0, Math.PI * 2);
+  ctx.fill();
+}
+
+function resetGame() {
+  initStars();
+  
+  demoActive = false;
+  
+  player = {
+    x: 260,
+    y: canvas.height - 250,
+    prevY: canvas.height - 250,
+    r: 15,
+    vy: 0,
+    vx: 0,
+    onGround: false,
+    onIce: false,
+    coyote: 0,
+    jumpBuffer: 0,
+    jumpHeld: false
+  };
+
+  platforms = [];
+  walls = [];
+  trail = [];
+  particles = [];
+  score = 0;
+
+  let x = 150;
+  for (let i = 0; i < 8; i++) {
+    spawnPlatform(x, "normal");
+    platforms[platforms.length - 1].y = canvas.height - 180;
+    x += PLATFORM_GAP;
+  }
+
+  spikeWall.x = 0;
+  scrollSpeed = 3.5 + (chosenSpeed - 1) * 1.8; // speed multiplier
+  gameState = "playing";
+  isFadingIn = true;
+  fadeAlpha = 1;
+}
+
+function mouseInside(b, mx, my) {
+  return mx > b.x && mx < b.x + b.w && my > b.y && my < b.y + b.h;
+}
+
+canvas.addEventListener("mousedown", (e) => {
+  const rect = canvas.getBoundingClientRect();
+  const mx = e.clientX - rect.left;
+  const my = e.clientY - rect.top;
+
+  if (gameState === "menu") {
+    if (mouseInside(buttons.speed1, mx, my)) chosenSpeed = 1;
+    if (mouseInside(buttons.speed2, mx, my)) chosenSpeed = 2;
+    if (mouseInside(buttons.speed3, mx, my)) chosenSpeed = 3;
+    if (mouseInside(buttons.playAgain, mx, my)) resetGame();
+  }
+
+  if (gameState === "gameover") {
+    if (mouseInside(buttons.playAgain, mx, my)) resetGame();
+    if (mouseInside(buttons.menu, mx, my)) {
+      isFadingOut = true;
+      fadeAlpha = 0;
+      nextGameState = "menu";
+    }
+  }
+
+  if (gameState === "playing") {
+    player.jumpBuffer = 8;
+    player.jumpHeld = true;
+  }
+});
+
+canvas.addEventListener("mouseup", () => {
+  if (gameState === "playing") player.jumpHeld = false;
+});
+
+// ---------- UPDATE ----------
+function update() {
+  if (gameState !== "playing") return;
+
+  player.prevY = player.y;
+
+  // MOVEMENT (A/D + Arrow keys)
+  if (keys["a"] || keys["arrowleft"]) player.vx = -MOVE_SPEED;
+  if (keys["d"] || keys["arrowright"]) player.vx = MOVE_SPEED;
+
+  let friction = player.onIce ? 0.98 : 0.8;
+  player.vx *= friction;
+  player.x += player.vx;
+
+  player.coyote = player.onGround ? 8 : player.coyote - 1;
+  if (player.jumpBuffer > 0) player.jumpBuffer--;
+
+  if (player.jumpBuffer > 0 && player.coyote > 0) {
+    player.vy = JUMP_FORCE;
+    player.jumpBuffer = 0;
+    player.coyote = 0;
+  }
+
+  if (!player.jumpHeld && player.vy < -5) player.vy *= 0.6;
+
+  player.vy += GRAVITY;
+  player.y += player.vy;
+
+  // Wrap-around vertical screen
+  if (player.y - player.r > canvas.height) {
+    player.y = -player.r;
+    player.vy = 0;
+    score -= 10;
+  }
+
+  player.onGround = false;
+  player.onIce = false;
+
+  // create trail
+  trail.push({ x: player.x, y: player.y, life: 25 });
+  if (trail.length > 35) trail.shift();
+
+  platforms.forEach(p => {
+    p.x -= scrollSpeed;
+    if (p.type === "moving") {
+      if (!p.baseY) p.baseY = p.y;
+      p.y += p.dir * 1.2;
+      if (Math.abs(p.y - p.baseY) > 40) p.dir *= -1;
+    }
+    if (p.type === "spinning") p.angle += 0.05;
+    if (p.type === "falling" && p.timer > 0) {
+      p.vy += 0.4;
+      p.y += p.vy;
+    }
+    if (p.type === "crumbly" && p.shake > 0) {
+      p.shake--;
+      if (p.shake <= 0) p.broken = true;
+    }
+  });
+
+  walls.forEach(w => w.x -= scrollSpeed);
+
+  // Score platforms BEFORE removing them
+  platforms.forEach(p => {
+    if (!p.scored && p.x + p.w < spikeWall.x + spikeWall.width) {
+      score += 1;
+      p.scored = true;
+    }
+  });
+
+  platforms.forEach(p => {
+    const wasAbove = player.prevY + player.r <= p.y;
+    const falling = player.vy >= 0;
+
+    if (
+      wasAbove &&
+      falling &&
+      player.x + player.r > p.x &&
+      player.x - player.r < p.x + p.w &&
+      player.y + player.r >= p.y &&
+      player.y + player.r <= p.y + p.h + 10
+    ) {
+      player.y = p.y - player.r;
+      player.onGround = true;
+      player.vy = 0;
+
+      switch (p.type) {
+        case "bouncy": player.vy = -46; break;
+        case "fragile": p.broken = true; break;
+        case "falling": if (!p.timer) p.timer = 1; break;
+        case "disappearing": p.broken = true; break;
+        case "ice": player.onIce = true; break;
+        case "lava": gameState = "gameover"; break;
+        case "spring": player.vy = -65; break;
+        case "slow": player.vx *= 0.3; break;
+        case "crumbly": p.shake = 30; break;
+      }
+    }
+  });
+
+  // WALL COLLISION
+  walls.forEach(w => {
+    const overlapX = player.x + player.r > w.x && player.x - player.r < w.x + w.w;
+    const overlapY = player.y + player.r > w.y && player.y - player.r < w.y + w.h;
+
+    if (overlapX && overlapY) {
+      if (player.x < w.x) player.x = w.x - player.r;
+      else player.x = w.x + w.w + player.r;
+    }
+  });
+
+  platforms = platforms.filter(p => p.x + p.w > spikeWall.x + spikeWall.width && !p.broken);
+  walls = walls.filter(w => w.x + w.w > spikeWall.x + spikeWall.width);
+
+  if (player.x - player.r <= spikeWall.x + spikeWall.width) {
+    gameState = "gameover";
+    isFadingOut = true;
+    fadeAlpha = 0;
+  }
+
+  // Move lava wall forward slowly
+  spikeWall.x = 0;  // Keep wall fixed at the back of the screen
+
+  const last = platforms[platforms.length - 1];
+  if (last.x < canvas.width) {
+    spawnPlatform(last.x + PLATFORM_GAP);
+    if (Math.random() < 0.6) spawnWall(last.x + PLATFORM_GAP + 60);
+    if (Math.random() < 0.35) spawnWall(last.x + PLATFORM_GAP + 220);
+  }
+
+  // update stars (decorations)
+  stars.forEach(s => {
+    s.x -= s.speed + scrollSpeed * 0.1;
+    if (s.x < 0) {
+      s.x = canvas.width;
+      s.y = Math.random() * canvas.height;
+    }
+  });
+
+  // update particles
+  particles.forEach(p => {
+    p.x += p.vx;
+    p.y += p.vy;
+    p.life--;
+  });
+  particles = particles.filter(p => p.life > 0);
+}
+
+// ---------- DRAW ----------
+function drawMenu() {
+  // Draw demo gameplay in background
+  if (!demoActive) initDemoGame();
+  updateDemoGame();
+  
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  
+  // Draw demo gameplay
+  drawDemoGameplay();
+  
+  // Darken background for menu readability
+  ctx.fillStyle = "rgba(0, 10, 30, 0.6)";
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+  ctx.fillStyle = "#00ff88";
+  ctx.font = "bold 64px 'Orbitron', sans-serif";
+  ctx.textAlign = "center";
+  ctx.shadowColor = "#00ff88";
+  ctx.shadowBlur = 20;
+  ctx.fillText("THE PLATFORM", canvas.width / 2, 100);
+  ctx.fillText("RAGE GAME", canvas.width / 2, 170);
+
+  // buttons
+  const centerX = canvas.width / 2;
+  const startY = 220;
+
+  buttons.speed1.x = centerX - buttons.speed1.w / 2;
+  buttons.speed1.y = startY;
+
+  buttons.speed2.x = centerX - buttons.speed2.w / 2;
+  buttons.speed2.y = startY + 90;
+
+  buttons.speed3.x = centerX - buttons.speed3.w / 2;
+  buttons.speed3.y = startY + 180;
+
+  [buttons.speed1, buttons.speed2, buttons.speed3].forEach(b => {
+    const isSelected = chosenSpeed === parseInt(b.text.split(" ")[1]);
+    ctx.fillStyle = isSelected ? "#ff0088" : "#333366";
+    ctx.fillRect(b.x, b.y, b.w, b.h);
+    ctx.strokeStyle = isSelected ? "#ff00ff" : "#0088ff";
+    ctx.lineWidth = 3;
+    ctx.strokeRect(b.x, b.y, b.w, b.h);
+
+    ctx.fillStyle = "#fff";
+    ctx.font = "bold 20px 'Orbitron', sans-serif";
+    ctx.textAlign = "center";
+    ctx.shadowColor = isSelected ? "#ff00ff" : "#0088ff";
+    ctx.shadowBlur = 10;
+    ctx.fillText(b.text, b.x + b.w / 2, b.y + 38);
+  });
+
+  // play button
+  buttons.playAgain.x = centerX - buttons.playAgain.w / 2;
+  buttons.playAgain.y = startY + 280;
+  ctx.fillStyle = "#00ff88";
+  ctx.fillRect(buttons.playAgain.x, buttons.playAgain.y, buttons.playAgain.w, buttons.playAgain.h);
+  ctx.fillStyle = "#000";
+  ctx.font = "bold 28px 'Orbitron', sans-serif";
+  ctx.textAlign = "center";
+  ctx.shadowColor = "#00ff88";
+  ctx.shadowBlur = 15;
+  ctx.fillText("PLAY", centerX, buttons.playAgain.y + 40);
+
+  ctx.fillStyle = "#0088ff";
+  ctx.font = "14px 'Orbitron', sans-serif";
+  ctx.shadowColor = "#0088ff";
+  ctx.shadowBlur = 8;
+  ctx.fillText("Choose speed then click PLAY", centerX, buttons.playAgain.y + 110);
+}
+
+function drawGameOver() {
+  // Background
+  const grad = ctx.createLinearGradient(0, 0, canvas.width, canvas.height);
+  grad.addColorStop(0, "#330000");
+  grad.addColorStop(1, "#001a00");
+  ctx.fillStyle = grad;
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+  ctx.fillStyle = "#ff0088";
+  ctx.font = "bold 72px 'Orbitron', sans-serif";
+  ctx.textAlign = "center";
+  ctx.shadowColor = "#ff0088";
+  ctx.shadowBlur = 25;
+  ctx.fillText("GAME OVER", canvas.width / 2, canvas.height / 2 - 40);
+
+  ctx.fillStyle = "#fff";
+  ctx.font = "bold 24px 'Orbitron', sans-serif";
+  ctx.fillText("Score: " + score, canvas.width / 2, canvas.height / 2 + 30);
+
+  buttons.playAgain.x = canvas.width / 2 - buttons.playAgain.w / 2;
+  buttons.playAgain.y = canvas.height / 2 + 80;
+  ctx.fillStyle = "#00ff88";
+  ctx.fillRect(buttons.playAgain.x, buttons.playAgain.y, buttons.playAgain.w, buttons.playAgain.h);
+  ctx.strokeStyle = "#00ff88";
+  ctx.lineWidth = 3;
+  ctx.strokeRect(buttons.playAgain.x, buttons.playAgain.y, buttons.playAgain.w, buttons.playAgain.h);
+  ctx.fillStyle = "#000";
+  ctx.font = "bold 22px 'Orbitron', sans-serif";
+  ctx.shadowColor = "#00ff88";
+  ctx.shadowBlur = 12;
+  ctx.fillText("PLAY AGAIN", canvas.width / 2, buttons.playAgain.y + 38);
+
+  buttons.menu.x = canvas.width / 2 - buttons.menu.w / 2;
+  buttons.menu.y = buttons.playAgain.y + 90;
+  ctx.fillStyle = "#0088ff";
+  ctx.fillRect(buttons.menu.x, buttons.menu.y, buttons.menu.w, buttons.menu.h);
+  ctx.strokeStyle = "#0088ff";
+  ctx.lineWidth = 3;
+  ctx.strokeRect(buttons.menu.x, buttons.menu.y, buttons.menu.w, buttons.menu.h);
+  ctx.fillStyle = "#fff";
+  ctx.font = "bold 22px 'Orbitron', sans-serif";
+  ctx.shadowColor = "#0088ff";
+  ctx.shadowBlur = 12;
+  ctx.fillText("MENU", canvas.width / 2, buttons.menu.y + 38);
+}
+
+// Helper: Draw platform with decorations
+function drawPlatformWithDetails(p) {
+  ctx.save();
+  const col = PLATFORM_COLORS[p.type];
+  
+  if (p.type === "spinning") {
+    ctx.translate(p.x + p.w / 2, p.y + p.h / 2);
+    ctx.rotate(p.angle);
+    
+    // Main platform
+    ctx.fillStyle = col;
+    ctx.fillRect(-p.w / 2, -p.h / 2, p.w, p.h);
+    
+    // Border
+    ctx.strokeStyle = "#fff";
+    ctx.lineWidth = 2;
+    ctx.strokeRect(-p.w / 2, -p.h / 2, p.w, p.h);
+    
+    // Spinning inner details
+    ctx.fillStyle = "rgba(255,255,255,0.3)";
+    for (let i = 0; i < 3; i++) {
+      ctx.fillRect(-p.w / 2 + 10 + i * 15, -2, 8, 4);
+    }
+  } else {
+    // Main platform
+    ctx.fillStyle = col;
+    ctx.fillRect(p.x, p.y, p.w, p.h);
+    
+    // Border glow
+    ctx.strokeStyle = col;
+    ctx.lineWidth = 2;
+    ctx.globalAlpha = 0.6;
+    ctx.strokeRect(p.x, p.y, p.w, p.h);
+    ctx.globalAlpha = 1;
+    
+    // Top edge highlight
+    ctx.fillStyle = "rgba(255,255,255,0.3)";
+    ctx.fillRect(p.x, p.y, p.w, 3);
+    
+    // Type-specific decorations
+    if (p.type === "bouncy") {
+      ctx.fillStyle = "rgba(0,255,255,0.4)";
+      for (let i = 0; i < Math.floor(p.w / 20); i++) {
+        ctx.beginPath();
+        ctx.arc(p.x + 10 + i * 20, p.y + p.h / 2, 5, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    } else if (p.type === "ice") {
+      // Ice crystals
+      ctx.strokeStyle = "rgba(255,255,255,0.5)";
+      ctx.lineWidth = 1;
+      for (let i = 0; i < 5; i++) {
+        const ix = p.x + Math.random() * p.w;
+        const iy = p.y + Math.random() * p.h;
+        ctx.beginPath();
+        ctx.moveTo(ix - 3, iy);
+        ctx.lineTo(ix + 3, iy);
+        ctx.moveTo(ix, iy - 3);
+        ctx.lineTo(ix, iy + 3);
+        ctx.stroke();
+      }
+    } else if (p.type === "fragile") {
+      // Cracks
+      ctx.strokeStyle = "rgba(0,0,0,0.4)";
+      ctx.lineWidth = 1;
+      for (let i = 0; i < 3; i++) {
+        ctx.beginPath();
+        ctx.moveTo(p.x + Math.random() * p.w, p.y);
+        ctx.lineTo(p.x + Math.random() * p.w, p.y + p.h);
+        ctx.stroke();
+      }
+    } else if (p.type === "spring") {
+      // Coil details
+      ctx.strokeStyle = "rgba(0,0,0,0.3)";
+      ctx.lineWidth = 2;
+      for (let i = 0; i < 3; i++) {
+        ctx.beginPath();
+        ctx.arc(p.x + p.w / 4 + i * (p.w / 3.5), p.y + p.h / 2, 4, 0, Math.PI * 2);
+        ctx.stroke();
+      }
+    } else if (p.type === "lava") {
+      // Lava bubbles
+      ctx.fillStyle = "rgba(255,255,0,0.3)";
+      for (let i = 0; i < 4; i++) {
+        ctx.beginPath();
+        ctx.arc(p.x + Math.random() * p.w, p.y + Math.random() * p.h, 3, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
+  }
+  
+  ctx.restore();
+}
+
+// Helper: Draw wall with spinning triangles
+function drawWallWithTriangles(w) {
+  // Main wall
+  const grad = ctx.createLinearGradient(w.x, w.y, w.x + w.w, w.y);
+  grad.addColorStop(0, "#555");
+  grad.addColorStop(0.5, "#444");
+  grad.addColorStop(1, "#333");
+  ctx.fillStyle = grad;
+  ctx.fillRect(w.x, w.y, w.w, w.h);
+  
+  // Border
+  ctx.strokeStyle = "#666";
+  ctx.lineWidth = 2;
+  ctx.strokeRect(w.x, w.y, w.w, w.h);
+  
+  // Spinning triangles inside
+  const centerX = w.x + w.w / 2;
+  const centerY = w.y + w.h / 2;
+  const spinAngle = Date.now() * 0.002;
+  
+  for (let i = 0; i < 3; i++) {
+    ctx.save();
+    ctx.translate(centerX, centerY);
+    ctx.rotate(spinAngle + (i * Math.PI * 2 / 3));
+    
+    // Draw triangle
+    ctx.fillStyle = "hsl(" + (100 + i * 120) + ", 100%, 50%)";
+    ctx.beginPath();
+    ctx.moveTo(0, -20);
+    ctx.lineTo(17, 10);
+    ctx.lineTo(-17, 10);
+    ctx.fill();
+    
+    // Triangle outline
+    ctx.strokeStyle = "#fff";
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.moveTo(0, -20);
+    ctx.lineTo(17, 10);
+    ctx.lineTo(-17, 10);
+    ctx.closePath();
+    ctx.stroke();
+    
+    ctx.restore();
+  }
+}
+
+function drawPlaying() {
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+  // background stars - twinkling effect
+  stars.forEach(s => {
+    const twinkle = Math.sin(Date.now() * 0.004 + s.x) * 0.2 + 0.3;
+    ctx.fillStyle = "rgba(255,255,255," + twinkle + ")";
+    ctx.fillRect(s.x, s.y, s.size, s.size);
+  });
+
+  // lava wall with spikes
+  const spikeGrad = ctx.createLinearGradient(spikeWall.x, 0, spikeWall.x + spikeWall.width, 0);
+  spikeGrad.addColorStop(0, "#a00");
+  spikeGrad.addColorStop(0.5, "#800");
+  spikeGrad.addColorStop(1, "#600");
+  ctx.fillStyle = spikeGrad;
+  ctx.fillRect(spikeWall.x, 0, spikeWall.width, canvas.height);
+  
+  // Add spikes to lava wall
+  ctx.fillStyle = "#600";
+  for (let y = 0; y < canvas.height; y += 30) {
+    ctx.beginPath();
+    ctx.moveTo(spikeWall.x + spikeWall.width, y);
+    ctx.lineTo(spikeWall.x + spikeWall.width + 10, y + 15);
+    ctx.lineTo(spikeWall.x + spikeWall.width, y + 30);
+    ctx.fill();
+  }
+
+  // walls with spinning triangles
+  walls.forEach(w => {
+    drawWallWithTriangles(w);
+  });
+
+  // platforms with decorations
+  platforms.forEach(p => {
+    drawPlatformWithDetails(p);
+  });
+
+  // trail (speed responsive)
+  const trailOffset = chosenSpeed * 1.2; // more speed = more backward stretch
+
+  for (let i = 0; i < trail.length; i++) {
+    const t = trail[i];
+    const stretch = trailOffset * (trail.length - i);
+    ctx.fillStyle = "rgba(0,255,255," + (t.life / 25) + ")";
+    ctx.beginPath();
+    ctx.arc(t.x - stretch, t.y, player.r - 3, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  // particles
+  particles.forEach(p => {
+    ctx.fillStyle = p.color;
+    ctx.globalAlpha = p.life / 60;
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, 3, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.shadowColor = p.color;
+    ctx.shadowBlur = 8;
+    ctx.strokeStyle = p.color;
+    ctx.lineWidth = 1;
+    ctx.stroke();
+    ctx.shadowColor = "transparent";
+    ctx.globalAlpha = 1;
+  });
+
+  // player
+  ctx.fillStyle = "#0ff";
+  ctx.shadowColor = "#0ff";
+  ctx.shadowBlur = 15;
+  ctx.beginPath();
+  ctx.arc(player.x, player.y, player.r, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.shadowColor = "transparent";
+
+  // score
+  ctx.fillStyle = "#00ff88";
+  ctx.font = "bold 28px 'Orbitron', sans-serif";
+  ctx.textAlign = "left";
+  ctx.shadowColor = "#00ff88";
+  ctx.shadowBlur = 10;
+  ctx.fillText("Score: " + score, 20, 40);
+  ctx.shadowColor = "transparent";
+}
+
+function updateFade() {
+  if (isFadingIn) {
+    fadeAlpha -= 0.04;
+    if (fadeAlpha <= 0) {
+      fadeAlpha = 0;
+      isFadingIn = false;
+    }
+  }
+  if (isFadingOut) {
+    fadeAlpha += 0.05;
+    if (fadeAlpha >= 1) {
+      fadeAlpha = 1;
+      isFadingOut = false;
+      // Transition to next state if specified, otherwise fade back in
+      if (nextGameState) {
+        gameState = nextGameState;
+        nextGameState = null;
+        isFadingIn = true;
+      } else {
+        // Auto-start fade in after fade out completes
+        isFadingIn = true;
+      }
+    }
+  }
+}
+
+function drawFadeOverlay() {
+  if (fadeAlpha > 0) {
+    ctx.fillStyle = "rgba(0, 0, 0, " + fadeAlpha + ")";
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+  }
+}
+
+function loop() {
+  update();
+  updateFade();
+  if (gameState === "menu") drawMenu();
+  if (gameState === "playing") drawPlaying();
+  if (gameState === "gameover") drawGameOver();
+  drawFadeOverlay();
+  requestAnimationFrame(loop);
+}
+
+initStars();
+loop();
+</script>
+
+</body>
+</html>
