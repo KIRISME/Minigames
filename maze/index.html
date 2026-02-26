@@ -172,25 +172,77 @@
             throwCooldown: 0
         };
 
-        function createEnemy() {
+        // All enemy types available at any time
+        const ALL_TYPES = ['basic','fast','tank','jumper','zigzag','destroyer','ghost','bouncer','teleporter','stealth','splitter','giant','swarm','magnet','gravity_flip'];
+
+        function createEnemy(forcedType) {
             const x = Math.random() * (WORLD_WIDTH - 100) + 50;
-            return {
-                x: x,
-                y: START_HEIGHT - 150,
-                vx: (Math.random() - 0.5) * 2,
-                radius: 12,
-                trapped: false,
-                trappedTimer: 0,
-                trapDuration: 3
-            };
+            // Spawn at a random height anywhere between near-ceiling and near-floor
+            const y = (FLOOR_LEVEL - 680) + Math.random() * 600;
+            const type = forcedType || ALL_TYPES[Math.floor(Math.random() * ALL_TYPES.length)];
+            const base = { x, y, trapped: false, trappedTimer: 0, type };
+            switch (type) {
+                case 'fast':
+                    return { ...base, vx:(Math.random()-0.5)*5, vy:0, radius:9, trapDuration:2, color:'#ff8800' };
+                case 'tank':
+                    return { ...base, vx:(Math.random()-0.5)*1.2, vy:0, radius:18, trapDuration:1.5, hits:2, maxHits:2, flashTimer:0, color:'#aa44ff' };
+                case 'jumper':
+                    return { ...base, vx:(Math.random()-0.5)*2, vy:0, radius:12, trapDuration:3, jumpTimer:0, color:'#44ff88' };
+                case 'zigzag':
+                    return { ...base, vx:(Math.random()<0.5?1:-1)*2.5, vy:(Math.random()<0.5?1:-1)*2.5, radius:11, trapDuration:3, color:'#00ddff' };
+                // --- NEW ENEMIES ---
+                case 'destroyer':
+                    // Never freezes; destroys blocks on contact; balls bounce off stunning it briefly
+                    return { ...base, vx:(Math.random()-0.5)*2.5, vy:0, radius:13, trapDuration:0, noFreeze:true, stunTimer:0, color:'#8b0000' };
+                case 'ghost':
+                    // Semi-transparent; only trappable while paused (ghostPaused true)
+                    return { ...base, vx:(Math.random()-0.5)*1.8, vy:(Math.random()-0.5)*1, radius:13, trapDuration:3, ghostPaused:false, ghostTimer:0, color:'#ccccff' };
+                case 'bouncer':
+                    // Very fast, perfect wall/ceiling/floor bounces, no friction
+                    return { ...base, vx:(Math.random()<0.5?1:-1)*7, vy:(Math.random()-0.5)*5, radius:10, trapDuration:2.5, color:'#aaff00' };
+                case 'teleporter':
+                    // Blinks to a random position every few seconds
+                    return { ...base, vx:0, vy:0, radius:12, trapDuration:2.5, teleportTimer:0, teleportInterval:3+Math.random()*2, blinking:false, blinkTimer:0, color:'#ff00ff' };
+                case 'stealth':
+                    // Alternates between visible and invisible; balls pass through while invisible
+                    return { ...base, vx:(Math.random()-0.5)*2.5, vy:0, radius:11, trapDuration:3, stealthTimer:0, visible:true, color:'#999999' };
+                case 'splitter':
+                    // Splits into 2 mini enemies when hit; minis behave like basic
+                    return { ...base, vx:(Math.random()-0.5)*2, vy:0, radius:13, trapDuration:3, isMini:false, color:'#ffdd00' };
+                case 'giant':
+                    // Huge, 4 hits to trap, very slow
+                    return { ...base, vx:(Math.random()-0.5)*0.8, vy:0, radius:26, trapDuration:1, hits:4, maxHits:4, flashTimer:0, color:'#ff5500' };
+                case 'swarm':
+                    // Tiny, fast, erratic; always spawns in a cluster of 3
+                    return { ...base, vx:(Math.random()-0.5)*6, vy:(Math.random()-0.5)*4, radius:7, trapDuration:2, color:'#ff44aa' };
+                case 'magnet':
+                    // Drifts toward nearest block and destroys it on contact; not destroyable while moving to a block
+                    return { ...base, vx:(Math.random()-0.5)*1.5, vy:0, radius:14, trapDuration:2.5, color:'#cc9900' };
+                case 'gravity_flip':
+                    // Has inverted gravity — floats upward, bounces off ceiling, drifts
+                    return { ...base, x, y: FLOOR_LEVEL - 600 + Math.random()*150, vx:(Math.random()-0.5)*2.5, vy:-(Math.random()*2+1), radius:12, trapDuration:3, color:'#44ccff' };
+                default: // basic
+                    return { ...base, vx:(Math.random()-0.5)*2, vy:0, radius:12, trapDuration:3, color:'#ff4444' };
+            }
+        }
+
+        function spawnEnemy(forcedType) {
+            const e = createEnemy(forcedType);
+            enemies.push(e);
+            // Swarm type always spawns in a cluster of 3
+            if (e.type === 'swarm') {
+                for (let i = 0; i < 2; i++) {
+                    const s = createEnemy('swarm');
+                    s.x = Math.max(50, Math.min(WORLD_WIDTH-50, e.x + (Math.random()-0.5)*100));
+                    s.y = e.y + (Math.random()-0.5)*60;
+                    enemies.push(s);
+                }
+            }
         }
 
         function spawnEnemies() {
             enemies = [];
-            // Start with some enemies
-            for (let i = 0; i < Math.min(2, Math.floor(time / 30) + 1); i++) {
-                enemies.push(createEnemy());
-            }
+            spawnEnemy();
         }
 
         function throwBall() {
@@ -288,15 +340,51 @@
 
                 // Check collision with enemies
                 enemies.forEach((enemy, eIndex) => {
+                    if (index >= balls.length) return; // ball already removed
                     const dx = enemy.x - ball.x;
                     const dy = enemy.y - ball.y;
                     const dist = Math.sqrt(dx * dx + dy * dy);
-                    
                     if (dist < enemy.radius + ball.size / 2 && !enemy.trapped) {
-                        // Hit! Trap the enemy
+                        // Stealth: balls pass through while invisible
+                        if (enemy.type === 'stealth' && !enemy.visible) return;
+                        // Ghost: only trappable while paused
+                        if (enemy.type === 'ghost' && !enemy.ghostPaused) {
+                            balls.splice(index, 1); return;
+                        }
+                        // Destroyer: never freezes; stunned briefly, ball destroyed
+                        if (enemy.noFreeze) {
+                            enemy.stunTimer = 0.5;
+                            enemy.vx = -enemy.vx * 0.6;
+                            score += 5;
+                            balls.splice(index, 1); return;
+                        }
+                        // Multi-hit enemies
+                        if ((enemy.type === 'tank' || enemy.type === 'giant') && enemy.hits > 1) {
+                            enemy.hits--;
+                            enemy.flashTimer = 0.3;
+                            score += enemy.type === 'giant' ? 8 : 5;
+                            balls.splice(index, 1); return;
+                        }
+                        // Splitter: spawns 2 minis then removes self
+                        if (enemy.type === 'splitter' && !enemy.isMini) {
+                            for (let si = 0; si < 2; si++) {
+                                const mini = createEnemy('splitter');
+                                mini.isMini = true;
+                                mini.radius = 7;
+                                mini.x = enemy.x + (si === 0 ? -18 : 18);
+                                mini.y = enemy.y;
+                                mini.vx = (si === 0 ? -3 : 3);
+                                enemies.push(mini);
+                            }
+                            enemies.splice(eIndex, 1);
+                            score += 15; trappedCount++;
+                            balls.splice(index, 1); return;
+                        }
+                        // Normal trap
+                        const pts = { fast:15, tank:25, giant:30, ghost:20, teleporter:15, stealth:12, bouncer:12, splitter:8, zigzag:10, swarm:5, magnet:12, gravity_flip:10, jumper:10, basic:10 };
                         enemy.trapped = true;
                         enemy.trappedTimer = 0;
-                        score += 10;
+                        score += pts[enemy.type] || 10;
                         trappedCount++;
                         balls.splice(index, 1);
                     }
@@ -305,39 +393,176 @@
         }
 
         function updateEnemies() {
-            enemies.forEach((enemy, index) => {
+            const CEIL_Y = FLOOR_LEVEL - 750; // upper bound for bouncing enemies
+            for (let index = enemies.length - 1; index >= 0; index--) {
+                const enemy = enemies[index];
+
+                // Trapped state
                 if (enemy.trapped) {
                     enemy.trappedTimer += 1 / 60;
                     if (enemy.trappedTimer >= enemy.trapDuration) {
                         enemy.trapped = false;
                         enemy.trappedTimer = 0;
+                        if (enemy.type === 'tank' || enemy.type === 'giant') enemy.hits = enemy.maxHits;
                     }
-                    return;
+                    continue;
                 }
 
-                // Move enemy
+                // Flash timer
+                if (enemy.flashTimer > 0) enemy.flashTimer -= 1 / 60;
+
+                // --- Type-specific AI ---
+                if (enemy.type === 'fast') {
+                    const dx = player.x - enemy.x;
+                    enemy.vx += (dx / (Math.abs(dx) || 1)) * 0.25;
+                    enemy.vx = Math.max(-6, Math.min(6, enemy.vx));
+
+                } else if (enemy.type === 'jumper') {
+                    enemy.vy = (enemy.vy || 0) + GRAVITY * 0.6;
+                    enemy.y += enemy.vy;
+                    const floorY = START_HEIGHT - 40;
+                    if (enemy.y + enemy.radius > floorY) {
+                        enemy.y = floorY - enemy.radius;
+                        enemy.jumpTimer = (enemy.jumpTimer || 0) + 1 / 60;
+                        if (enemy.jumpTimer > 1.8) { enemy.vy = -11; enemy.jumpTimer = 0; }
+                        else enemy.vy = 0;
+                    }
+                    if (enemy.y < CEIL_Y) { enemy.y = CEIL_Y; enemy.vy = Math.abs(enemy.vy) * 0.5; }
+
+                } else if (enemy.type === 'zigzag') {
+                    enemy.vy = enemy.vy || 2.5;
+                    enemy.y += enemy.vy;
+                    if (enemy.y < CEIL_Y || enemy.y > FLOOR_LEVEL - 40) {
+                        enemy.vy = -enemy.vy;
+                        enemy.y = Math.max(CEIL_Y, Math.min(FLOOR_LEVEL - 40, enemy.y));
+                    }
+
+                } else if (enemy.type === 'destroyer') {
+                    // Stun wears off
+                    if (enemy.stunTimer > 0) { enemy.stunTimer -= 1/60; }
+                    // Occasionally wander toward player
+                    if (Math.random() < 0.02) {
+                        const dx = player.x - enemy.x;
+                        enemy.vx = (dx / (Math.abs(dx)||1)) * (2 + Math.random());
+                    }
+                    // Destroy any block it touches
+                    for (let bi = balls.length - 1; bi >= 0; bi--) {
+                        const bl = balls[bi];
+                        if (enemy.x + enemy.radius > bl.x - bl.size/2 &&
+                            enemy.x - enemy.radius < bl.x + bl.size/2 &&
+                            enemy.y + enemy.radius > bl.y - bl.size/2 &&
+                            enemy.y - enemy.radius < bl.y + bl.size/2) {
+                            balls.splice(bi, 1);
+                        }
+                    }
+
+                } else if (enemy.type === 'ghost') {
+                    // Randomly pause to allow trapping
+                    enemy.ghostTimer = (enemy.ghostTimer || 0) + 1/60;
+                    if (!enemy.ghostPaused && enemy.ghostTimer > 2.5) {
+                        enemy.ghostPaused = true; enemy.ghostTimer = 0;
+                    } else if (enemy.ghostPaused && enemy.ghostTimer > 1) {
+                        enemy.ghostPaused = false; enemy.ghostTimer = 0;
+                    }
+                    if (!enemy.ghostPaused) enemy.y += enemy.vy;
+                    // Drift up and down
+                    if (enemy.y < CEIL_Y || enemy.y > FLOOR_LEVEL - 40) {
+                        enemy.vy = -enemy.vy;
+                        enemy.y = Math.max(CEIL_Y, Math.min(FLOOR_LEVEL - 40, enemy.y));
+                    }
+
+                } else if (enemy.type === 'bouncer') {
+                    // Perfect bounces, no friction
+                    enemy.y += enemy.vy;
+                    if (enemy.y - enemy.radius < CEIL_Y) { enemy.y = CEIL_Y + enemy.radius; enemy.vy = Math.abs(enemy.vy); }
+                    if (enemy.y + enemy.radius > FLOOR_LEVEL - 20) { enemy.y = FLOOR_LEVEL - 20 - enemy.radius; enemy.vy = -Math.abs(enemy.vy); }
+
+                } else if (enemy.type === 'teleporter') {
+                    enemy.teleportTimer = (enemy.teleportTimer || 0) + 1/60;
+                    if (enemy.blinking) {
+                        enemy.blinkTimer = (enemy.blinkTimer||0) + 1/60;
+                        if (enemy.blinkTimer > 0.4) {
+                            enemy.x = Math.random() * (WORLD_WIDTH - 100) + 50;
+                            enemy.y = (FLOOR_LEVEL - 680) + Math.random() * 600;
+                            enemy.blinking = false; enemy.blinkTimer = 0; enemy.teleportTimer = 0;
+                        }
+                    } else if (enemy.teleportTimer > enemy.teleportInterval) {
+                        enemy.blinking = true; enemy.blinkTimer = 0;
+                    }
+
+                } else if (enemy.type === 'stealth') {
+                    enemy.stealthTimer = (enemy.stealthTimer || 0) + 1/60;
+                    // Visible 1.5s, invisible 2s cycle
+                    const cycle = 3.5;
+                    const t = enemy.stealthTimer % cycle;
+                    enemy.visible = t < 1.5;
+                    if (Math.random() < 0.008) enemy.vx = (Math.random()-0.5) * 3;
+
+                } else if (enemy.type === 'splitter') {
+                    if (Math.random() < 0.01) enemy.vx = (Math.random()-0.5) * (enemy.isMini ? 5 : 2.5);
+
+                } else if (enemy.type === 'giant') {
+                    if (Math.random() < 0.006) enemy.vx = (Math.random()-0.5) * 1.2;
+
+                } else if (enemy.type === 'swarm') {
+                    enemy.vy = (enemy.vy || 0);
+                    enemy.y += enemy.vy;
+                    if (enemy.y < CEIL_Y || enemy.y > FLOOR_LEVEL - 30) {
+                        enemy.vy = -enemy.vy;
+                        enemy.y = Math.max(CEIL_Y, Math.min(FLOOR_LEVEL - 30, enemy.y));
+                    }
+                    if (Math.random() < 0.04) { enemy.vx = (Math.random()-0.5)*7; enemy.vy = (Math.random()-0.5)*5; }
+
+                } else if (enemy.type === 'magnet') {
+                    // Seek nearest block and destroy on contact
+                    let nearest = null, nearDist = Infinity;
+                    balls.forEach(bl => {
+                        const d = Math.hypot(bl.x - enemy.x, bl.y - enemy.y);
+                        if (d < nearDist) { nearDist = d; nearest = bl; }
+                    });
+                    if (nearest) {
+                        const dx = nearest.x - enemy.x, dy = nearest.y - enemy.y;
+                        const d = Math.hypot(dx, dy) || 1;
+                        enemy.vx += (dx/d) * 0.12;
+                        enemy.vy = (enemy.vy||0) + (dy/d) * 0.12;
+                        enemy.vx = Math.max(-3, Math.min(3, enemy.vx));
+                        enemy.vy = Math.max(-3, Math.min(3, enemy.vy));
+                        // Destroy block on contact
+                        if (nearDist < enemy.radius + nearest.size/2) {
+                            const bi = balls.indexOf(nearest);
+                            if (bi !== -1) balls.splice(bi, 1);
+                        }
+                    } else {
+                        if (Math.random() < 0.01) enemy.vx = (Math.random()-0.5)*2;
+                    }
+                    enemy.y += (enemy.vy || 0);
+                    if (enemy.y < CEIL_Y || enemy.y > FLOOR_LEVEL - 30) {
+                        enemy.vy = -(enemy.vy||0);
+                        enemy.y = Math.max(CEIL_Y, Math.min(FLOOR_LEVEL - 30, enemy.y));
+                    }
+
+                } else if (enemy.type === 'gravity_flip') {
+                    // Anti-gravity: floats upward
+                    enemy.vy -= GRAVITY * 0.5;
+                    enemy.y += enemy.vy;
+                    if (enemy.y - enemy.radius < CEIL_Y) { enemy.y = CEIL_Y + enemy.radius; enemy.vy = Math.abs(enemy.vy) * 0.6; }
+                    if (enemy.y + enemy.radius > FLOOR_LEVEL - 50) { enemy.y = FLOOR_LEVEL - 50 - enemy.radius; enemy.vy = -Math.abs(enemy.vy) * 0.6; }
+                    enemy.vy = Math.max(-8, Math.min(8, enemy.vy));
+                    if (Math.random() < 0.008) enemy.vx = (Math.random()-0.5)*3;
+
+                } else {
+                    // basic / unknown
+                    if (Math.random() < 0.01) enemy.vx = (Math.random()-0.5)*3;
+                }
+
+                // Horizontal movement + wall bounce (all types)
                 enemy.x += enemy.vx;
+                if (enemy.x - enemy.radius < ARENA_PADDING) { enemy.x = ARENA_PADDING + enemy.radius; enemy.vx = Math.abs(enemy.vx); }
+                else if (enemy.x + enemy.radius > WORLD_WIDTH - ARENA_PADDING) { enemy.x = WORLD_WIDTH - ARENA_PADDING - enemy.radius; enemy.vx = -Math.abs(enemy.vx); }
 
-                // Bounce off walls
-                if (enemy.x - enemy.radius < ARENA_PADDING) {
-                    enemy.x = ARENA_PADDING + enemy.radius;
-                    enemy.vx = Math.abs(enemy.vx);
-                } else if (enemy.x + enemy.radius > WORLD_WIDTH - ARENA_PADDING) {
-                    enemy.x = WORLD_WIDTH - ARENA_PADDING - enemy.radius;
-                    enemy.vx = -Math.abs(enemy.vx);
-                }
-
-                // Check lava collision - remove enemy
-                if (enemy.y > LAVA_LEVEL) {
-                    enemies.splice(index, 1);
-                    return;
-                }
-
-                // Occasionally change direction
-                if (Math.random() < 0.01) {
-                    enemy.vx = (Math.random() - 0.5) * 3;
-                }
-            });
+                // Remove if falls into lava
+                if (enemy.y > LAVA_LEVEL) { enemies.splice(index, 1); }
+            }
         }
 
         function updateGame() {
@@ -357,8 +582,8 @@
             }
 
             // Spawn additional enemies over time
-            if (Math.floor(time) % 30 === 0 && Math.floor(time) > 0 && enemies.length < Math.floor(time / 30) + 2 && enemies.length < 6) {
-                enemies.push(createEnemy());
+            if (Math.floor(time) % 20 === 0 && Math.floor(time) > 0 && enemies.length < Math.floor(time / 20) + 2 && enemies.length < 12) {
+                spawnEnemy();
             }
 
             // Apply gravity to player
@@ -482,28 +707,199 @@
 
             // Draw enemies
             enemies.forEach(enemy => {
+                ctx.save();
+
+                // Trapped cage
                 if (enemy.trapped) {
-                    // Trapped enemy - show as frozen/caged
-                    ctx.fillStyle = 'rgba(100, 100, 255, 0.3)';
-                    ctx.fillRect(enemy.x - enemy.radius - 5, enemy.y - enemy.radius - 5, enemy.radius * 2 + 10, enemy.radius * 2 + 10);
-                    ctx.strokeStyle = '#6464ff';
-                    ctx.lineWidth = 2;
-                    ctx.strokeRect(enemy.x - enemy.radius - 5, enemy.y - enemy.radius - 5, enemy.radius * 2 + 10, enemy.radius * 2 + 10);
+                    ctx.fillStyle = 'rgba(100,100,255,0.25)';
+                    ctx.fillRect(enemy.x-enemy.radius-5, enemy.y-enemy.radius-5, enemy.radius*2+10, enemy.radius*2+10);
+                    ctx.strokeStyle = '#6464ff'; ctx.lineWidth = 2;
+                    ctx.strokeRect(enemy.x-enemy.radius-5, enemy.y-enemy.radius-5, enemy.radius*2+10, enemy.radius*2+10);
                 }
 
-                ctx.fillStyle = '#ff4444';
-                ctx.beginPath();
-                ctx.arc(enemy.x, enemy.y, enemy.radius, 0, Math.PI * 2);
-                ctx.fill();
-                
-                // Enemy eyes
-                ctx.fillStyle = '#fff';
-                ctx.beginPath();
-                ctx.arc(enemy.x - 4, enemy.y - 2, 2, 0, Math.PI * 2);
-                ctx.fill();
-                ctx.beginPath();
-                ctx.arc(enemy.x + 4, enemy.y - 2, 2, 0, Math.PI * 2);
-                ctx.fill();
+                // Flash for multi-hit enemies
+                const flashing = (enemy.type==='tank'||enemy.type==='giant') && enemy.flashTimer > 0 && Math.floor(enemy.flashTimer*20)%2===0;
+                // Stealth: skip draw when invisible (faint outline only)
+                if (enemy.type === 'stealth' && !enemy.visible && !enemy.trapped) {
+                    ctx.strokeStyle = 'rgba(150,150,150,0.3)';
+                    ctx.lineWidth = 1;
+                    ctx.beginPath(); ctx.arc(enemy.x, enemy.y, enemy.radius, 0, Math.PI*2); ctx.stroke();
+                    ctx.restore(); return;
+                }
+                // Teleporter blinking effect
+                if (enemy.type === 'teleporter' && enemy.blinking) {
+                    ctx.globalAlpha = 0.3 + Math.sin(enemy.blinkTimer*40)*0.3;
+                }
+                // Ghost semi-transparent, brighter when paused
+                if (enemy.type === 'ghost') {
+                    ctx.globalAlpha = enemy.ghostPaused ? 0.9 : 0.4;
+                }
+
+                ctx.fillStyle = flashing ? '#ffffff' : (enemy.color || '#ff4444');
+
+                // --- Shape per type ---
+                if (enemy.type === 'basic' || enemy.type === 'fast' || enemy.type === 'jumper' || enemy.type === 'swarm' || enemy.type === 'splitter' || enemy.type === 'gravity_flip') {
+                    ctx.beginPath(); ctx.arc(enemy.x, enemy.y, enemy.radius, 0, Math.PI*2); ctx.fill();
+                }
+
+                if (enemy.type === 'fast') {
+                    // Speed lines
+                    ctx.strokeStyle = 'rgba(255,200,0,0.7)'; ctx.lineWidth = 2;
+                    const dir = enemy.vx < 0 ? 1 : -1;
+                    for (let i = -2; i <= 2; i++) {
+                        ctx.beginPath();
+                        ctx.moveTo(enemy.x + dir*(enemy.radius+3), enemy.y+i*3);
+                        ctx.lineTo(enemy.x + dir*(enemy.radius+12), enemy.y+i*3);
+                        ctx.stroke();
+                    }
+                } else if (enemy.type === 'tank') {
+                    // Purple hexagon
+                    ctx.beginPath();
+                    for (let i = 0; i < 6; i++) {
+                        const a = (i/6)*Math.PI*2 - Math.PI/6;
+                        const px = enemy.x + Math.cos(a)*enemy.radius, py = enemy.y + Math.sin(a)*enemy.radius;
+                        i===0 ? ctx.moveTo(px,py) : ctx.lineTo(px,py);
+                    }
+                    ctx.closePath(); ctx.fill();
+                    ctx.strokeStyle='#dd88ff'; ctx.lineWidth=3; ctx.stroke();
+                    for (let i = 0; i < (enemy.hits||0); i++) {
+                        ctx.fillStyle='#ffdd00'; ctx.beginPath();
+                        ctx.arc(enemy.x-4+i*8, enemy.y-enemy.radius-7, 3, 0, Math.PI*2); ctx.fill();
+                    }
+                } else if (enemy.type === 'jumper') {
+                    // Spring coils below
+                    ctx.strokeStyle='#22cc66'; ctx.lineWidth=2; ctx.beginPath();
+                    for (let i=0; i<=5; i++) {
+                        const sx = enemy.x+(i%2===0?-4:4), sy = enemy.y+enemy.radius+i*3;
+                        i===0 ? ctx.moveTo(enemy.x, enemy.y+enemy.radius) : ctx.lineTo(sx,sy);
+                    }
+                    ctx.stroke();
+                } else if (enemy.type === 'zigzag') {
+                    // Cyan diamond
+                    ctx.beginPath();
+                    ctx.moveTo(enemy.x, enemy.y-enemy.radius);
+                    ctx.lineTo(enemy.x+enemy.radius, enemy.y);
+                    ctx.lineTo(enemy.x, enemy.y+enemy.radius);
+                    ctx.lineTo(enemy.x-enemy.radius, enemy.y);
+                    ctx.closePath(); ctx.fill();
+                    ctx.strokeStyle='#88eeff'; ctx.lineWidth=2; ctx.stroke();
+                } else if (enemy.type === 'destroyer') {
+                    // Dark red circle with X
+                    ctx.beginPath(); ctx.arc(enemy.x, enemy.y, enemy.radius, 0, Math.PI*2); ctx.fill();
+                    ctx.strokeStyle='#ff6666'; ctx.lineWidth=3;
+                    const r = enemy.radius*0.6;
+                    ctx.beginPath(); ctx.moveTo(enemy.x-r,enemy.y-r); ctx.lineTo(enemy.x+r,enemy.y+r); ctx.stroke();
+                    ctx.beginPath(); ctx.moveTo(enemy.x+r,enemy.y-r); ctx.lineTo(enemy.x-r,enemy.y+r); ctx.stroke();
+                    // Stun ring
+                    if (enemy.stunTimer > 0) {
+                        ctx.strokeStyle='rgba(255,255,100,0.7)'; ctx.lineWidth=2;
+                        ctx.beginPath(); ctx.arc(enemy.x, enemy.y, enemy.radius+5, 0, Math.PI*2); ctx.stroke();
+                    }
+                } else if (enemy.type === 'ghost') {
+                    // White arc with wisp tail
+                    ctx.fillStyle = enemy.ghostPaused ? '#eeeeff' : '#aaaacc';
+                    ctx.beginPath(); ctx.arc(enemy.x, enemy.y, enemy.radius, 0, Math.PI*2); ctx.fill();
+                    // Wisp lines
+                    ctx.strokeStyle='rgba(200,200,255,0.5)'; ctx.lineWidth=1;
+                    for (let i = -1; i <= 1; i++) {
+                        ctx.beginPath();
+                        ctx.moveTo(enemy.x+i*5, enemy.y+enemy.radius);
+                        ctx.quadraticCurveTo(enemy.x+i*8, enemy.y+enemy.radius+8, enemy.x+i*3, enemy.y+enemy.radius+14);
+                        ctx.stroke();
+                    }
+                    if (enemy.ghostPaused) {
+                        ctx.strokeStyle='#ff4444'; ctx.lineWidth=1.5;
+                        ctx.beginPath(); ctx.arc(enemy.x, enemy.y, enemy.radius+4, 0, Math.PI*2); ctx.stroke();
+                    }
+                } else if (enemy.type === 'bouncer') {
+                    // Lime green with arrows
+                    ctx.beginPath(); ctx.arc(enemy.x, enemy.y, enemy.radius, 0, Math.PI*2); ctx.fill();
+                    ctx.strokeStyle='#ffffff'; ctx.lineWidth=2;
+                    // Arrow pointing direction
+                    const bDir = enemy.vx < 0 ? -1 : 1;
+                    ctx.beginPath();
+                    ctx.moveTo(enemy.x-bDir*4, enemy.y);
+                    ctx.lineTo(enemy.x+bDir*4, enemy.y);
+                    ctx.lineTo(enemy.x+bDir*2, enemy.y-3);
+                    ctx.moveTo(enemy.x+bDir*4, enemy.y);
+                    ctx.lineTo(enemy.x+bDir*2, enemy.y+3);
+                    ctx.stroke();
+                } else if (enemy.type === 'teleporter') {
+                    // Magenta with rotating ring
+                    ctx.beginPath(); ctx.arc(enemy.x, enemy.y, enemy.radius, 0, Math.PI*2); ctx.fill();
+                    ctx.strokeStyle='rgba(255,100,255,0.8)'; ctx.lineWidth=2;
+                    const tAngle = (time*3) % (Math.PI*2);
+                    ctx.beginPath(); ctx.arc(enemy.x, enemy.y, enemy.radius+4, tAngle, tAngle+Math.PI); ctx.stroke();
+                } else if (enemy.type === 'stealth') {
+                    // Dark grey circle with dashed outline
+                    ctx.beginPath(); ctx.arc(enemy.x, enemy.y, enemy.radius, 0, Math.PI*2); ctx.fill();
+                    ctx.setLineDash([3,3]); ctx.strokeStyle='#cccccc'; ctx.lineWidth=1.5;
+                    ctx.beginPath(); ctx.arc(enemy.x, enemy.y, enemy.radius+3, 0, Math.PI*2); ctx.stroke();
+                    ctx.setLineDash([]);
+                } else if (enemy.type === 'splitter') {
+                    // Yellow circle with crack
+                    ctx.beginPath(); ctx.arc(enemy.x, enemy.y, enemy.radius, 0, Math.PI*2); ctx.fill();
+                    if (!enemy.isMini) {
+                        ctx.strokeStyle='#cc8800'; ctx.lineWidth=2;
+                        ctx.beginPath();
+                        ctx.moveTo(enemy.x, enemy.y-enemy.radius);
+                        ctx.lineTo(enemy.x+2, enemy.y); ctx.lineTo(enemy.x-1, enemy.y+3);
+                        ctx.lineTo(enemy.x, enemy.y+enemy.radius);
+                        ctx.stroke();
+                    }
+                } else if (enemy.type === 'giant') {
+                    // Large dark orange circle with armor plates
+                    ctx.beginPath(); ctx.arc(enemy.x, enemy.y, enemy.radius, 0, Math.PI*2); ctx.fill();
+                    ctx.strokeStyle='#ffaa44'; ctx.lineWidth=4;
+                    ctx.beginPath(); ctx.arc(enemy.x, enemy.y, enemy.radius, 0, Math.PI*2); ctx.stroke();
+                    // HP pips
+                    for (let i = 0; i < (enemy.hits||0); i++) {
+                        ctx.fillStyle='#ffdd00'; ctx.beginPath();
+                        ctx.arc(enemy.x-12+i*8, enemy.y-enemy.radius-8, 3.5, 0, Math.PI*2); ctx.fill();
+                    }
+                } else if (enemy.type === 'magnet') {
+                    // Gold horseshoe shape
+                    ctx.strokeStyle = enemy.color; ctx.lineWidth = 5;
+                    ctx.lineCap = 'round';
+                    ctx.beginPath();
+                    ctx.arc(enemy.x, enemy.y, enemy.radius*0.6, Math.PI, 0);
+                    ctx.stroke();
+                    ctx.strokeStyle='#ff4444'; ctx.lineWidth=4;
+                    ctx.beginPath(); ctx.moveTo(enemy.x-enemy.radius*0.6, enemy.y); ctx.lineTo(enemy.x-enemy.radius*0.6, enemy.y+7); ctx.stroke();
+                    ctx.strokeStyle='#4444ff';
+                    ctx.beginPath(); ctx.moveTo(enemy.x+enemy.radius*0.6, enemy.y); ctx.lineTo(enemy.x+enemy.radius*0.6, enemy.y+7); ctx.stroke();
+                    // Attraction beam to nearest block
+                    let nearestBlk = null, nDist = Infinity;
+                    balls.forEach(bl => { const d=Math.hypot(bl.x-enemy.x,bl.y-enemy.y); if(d<nDist){nDist=d;nearestBlk=bl;} });
+                    if (nearestBlk && nDist < 200) {
+                        ctx.strokeStyle='rgba(200,150,0,0.3)'; ctx.lineWidth=1;
+                        ctx.setLineDash([4,4]);
+                        ctx.beginPath(); ctx.moveTo(enemy.x,enemy.y); ctx.lineTo(nearestBlk.x,nearestBlk.y); ctx.stroke();
+                        ctx.setLineDash([]);
+                    }
+                } else if (enemy.type === 'gravity_flip') {
+                    // Sky blue circle with up arrow
+                    ctx.beginPath(); ctx.arc(enemy.x, enemy.y, enemy.radius, 0, Math.PI*2); ctx.fill();
+                    ctx.strokeStyle='#ffffff'; ctx.lineWidth=2;
+                    ctx.beginPath();
+                    ctx.moveTo(enemy.x, enemy.y+5); ctx.lineTo(enemy.x, enemy.y-6);
+                    ctx.lineTo(enemy.x-4, enemy.y-2); ctx.moveTo(enemy.x, enemy.y-6); ctx.lineTo(enemy.x+4, enemy.y-2);
+                    ctx.stroke();
+                }
+
+                // Eyes (skip for magnet/zigzag/ghost shape)
+                if (enemy.type !== 'magnet' && enemy.type !== 'zigzag') {
+                    ctx.globalAlpha = 1;
+                    const eyeScale = enemy.radius / 12;
+                    ctx.fillStyle='#fff';
+                    ctx.beginPath(); ctx.arc(enemy.x-4*eyeScale, enemy.y-2*eyeScale, 2*eyeScale, 0, Math.PI*2); ctx.fill();
+                    ctx.beginPath(); ctx.arc(enemy.x+4*eyeScale, enemy.y-2*eyeScale, 2*eyeScale, 0, Math.PI*2); ctx.fill();
+                    ctx.fillStyle='#111';
+                    ctx.beginPath(); ctx.arc(enemy.x-4*eyeScale, enemy.y-2*eyeScale, eyeScale, 0, Math.PI*2); ctx.fill();
+                    ctx.beginPath(); ctx.arc(enemy.x+4*eyeScale, enemy.y-2*eyeScale, eyeScale, 0, Math.PI*2); ctx.fill();
+                }
+
+                ctx.restore();
             });
 
             // Draw blocks
