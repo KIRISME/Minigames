@@ -36,7 +36,7 @@ function main() {
   function fit() {
     const rect = canvas.getBoundingClientRect();
     canvas.width = rect.width;
-    canvas.height = Math.min(720, Math.floor(rect.width * 0.7) || 640);
+    canvas.height = rect.height || window.innerHeight - (document.getElementById('ui')?.offsetHeight || 80);
   }
   window.addEventListener('resize', fit);
   fit();

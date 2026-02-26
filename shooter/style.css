@@ -1,8 +1,8 @@
 *{box-sizing:border-box}
-html,body{height:100%;margin:0;font-family:system-ui,Segoe UI,Roboto,Arial}
-body{display:flex;flex-direction:column;align-items:center;justify-content:flex-start;background:#0b0f1a;color:#e6eef8}
-#ui{width:100%;max-width:900px;padding:12px;text-align:center}
-#game{background:#071028;border:3px solid #18314a;border-radius:8px;display:block;width:100%;height:640px;max-width:900px}
+html,body{height:100%;margin:0;font-family:system-ui,Segoe UI,Roboto,Arial;overflow:hidden}
+body{display:flex;flex-direction:column;align-items:stretch;justify-content:flex-start;background:#0b0f1a;color:#e6eef8}
+#ui{width:100%;padding:12px;text-align:center}
+#game{background:#071028;border:none;display:block;width:100%;flex:1;min-height:0}
 #info{font-weight:600;margin-bottom:6px}
 #hint{font-size:13px;color:#9fb0c9}
 
