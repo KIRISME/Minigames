@@ -100,6 +100,26 @@
             transform: scale(1.05);
         }
 
+        .enemyCountBtn {
+            padding: 10px 22px !important;
+            margin: 6px 5px !important;
+            font-size: 1em !important;
+            opacity: 0.6;
+        }
+
+        .enemyCountBtn.selected {
+            opacity: 1;
+            outline: 3px solid #00ff88;
+            transform: scale(1.08);
+        }
+
+        #enemyCountLabel {
+            margin: 12px 0 4px 0;
+            font-size: 1em;
+            color: #aaffcc;
+            font-weight: bold;
+        }
+
         .hidden {
             display: none;
         }
@@ -117,6 +137,12 @@
         <h1>🎯 Block Builder</h1>
         <p>Build your way across the lava!</p>
         <p id="menuMessage">Click Start to begin</p>
+        <p id="enemyCountLabel">Starting enemies:</p>
+        <div id="enemyCountBtns">
+            <button class="enemyCountBtn selected" onclick="setEnemyCount(1,this)">1</button>
+            <button class="enemyCountBtn" onclick="setEnemyCount(5,this)">5</button>
+            <button class="enemyCountBtn" onclick="setEnemyCount(100,this)">100</button>
+        </div>
         <button onclick="startGame()">Start Game</button>
         <button onclick="location.href='../index.html'">Back to Menu</button>
     </div>
@@ -240,9 +266,19 @@
             }
         }
 
+        let startingEnemyCount = 1;
+
+        function setEnemyCount(count, btn) {
+            startingEnemyCount = count;
+            document.querySelectorAll('.enemyCountBtn').forEach(b => b.classList.remove('selected'));
+            if (btn) btn.classList.add('selected');
+        }
+
         function spawnEnemies() {
             enemies = [];
-            spawnEnemy();
+            for (let i = 0; i < startingEnemyCount; i++) {
+                spawnEnemy();
+            }
         }
 
         function throwBall() {
@@ -1012,6 +1048,7 @@
             score = 0;
             trappedCount = 0;
             balls = [];
+            enemies = [];
             player.x = WORLD_WIDTH / 2;
             player.y = START_HEIGHT;
             player.vy = 0;
@@ -1019,7 +1056,7 @@
             player.throwReady = true;
             camera.x = 0;
             camera.y = 0;
-            spawnEnemies();
+            setTimeout(spawnEnemies, 5000);
             gameLoop();
         }
 
