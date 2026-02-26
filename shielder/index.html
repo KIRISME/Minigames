@@ -156,16 +156,16 @@ let particles = []; // Add particle system
 
 // Projectile type definitions
 const PROJECTILE_TYPES = [
-  { name: 'basic', color: '#FF4C4C', speed: 2.5, radius: 12, damage: 10 },
-  { name: 'fast', color: '#0099FF', speed: 4, radius: 8, damage: 7 },
-  { name: 'heavy', color: '#9900FF', speed: 1.5, radius: 16, damage: 15 },
-  { name: 'splitting', color: '#00FF88', speed: 2.5, radius: 10, damage: 8, splitting: true },
+  { name: 'standard', color: '#FF4C4C', speed: 2.5, radius: 12, damage: 10 },
+  { name: 'speedster', color: '#0099FF', speed: 4, radius: 8, damage: 7 },
+  { name: 'bruiser', color: '#9900FF', speed: 1.5, radius: 16, damage: 15 },
+  { name: 'bomb', color: '#00FF88', speed: 2.5, radius: 10, damage: 8, splitting: true },
   { name: 'spiral', color: '#FFFF00', speed: 2, radius: 9, damage: 8, spiral: true },
-  { name: 'avoiding', color: '#FF00FF', speed: 2.8, radius: 11, damage: 9, homing: true },
-  { name: 'split', color: '#FF9900', speed: 2.2, radius: 13, damage: 12, splittable: true },
-  { name: 'electric', color: '#FFFFFF', speed: 2.4, radius: 10, damage: 11, electric: true },
-  { name: 'fragile', color: '#FF1493', speed: 3, radius: 7, damage: 5, fragile: true },
-  { name: 'ice', color: '#00DDFF', speed: 2.3, radius: 11, damage: 8, freeze: true }
+  { name: 'seeker', color: '#FF00FF', speed: 2.8, radius: 11, damage: 9, homing: true },
+  { name: 'shrinker', color: '#FF9900', speed: 2.2, radius: 13, damage: 12, splittable: true },
+  { name: 'shock', color: '#FFFFFF', speed: 2.4, radius: 10, damage: 11, electric: true },
+  { name: 'glass', color: '#FF1493', speed: 3, radius: 7, damage: 5, fragile: true },
+  { name: 'frost', color: '#00DDFF', speed: 2.3, radius: 11, damage: 8, freeze: true }
 ];
 
 // Track which projectile types are enabled
@@ -439,10 +439,46 @@ function handleShieldCollision(obj, angle, shieldPos, isPower=false){
       const ny=(obj.y-cy)/dist;
       const speed=Math.hypot(obj.vx,obj.vy);
       
+      // Splitter projectiles break into three when blocked by the shield
+      if(obj.splittable && obj.splitCount < 1) {
+        const baseAngle = Math.atan2(obj.y - hero.y, obj.x - hero.x);
+        const splitSpeed = speed * 0.95;
+        const spread = 0.5;
+
+        for(let i = -1; i <= 1; i++) {
+          const spreadAngle = baseAngle + (i * spread);
+          const newProj = {
+            x: obj.x,
+            y: obj.y,
+            vx: Math.cos(spreadAngle) * splitSpeed,
+            vy: Math.sin(spreadAngle) * splitSpeed,
+            radius: Math.max(6, obj.radius * 0.75),
+            color: obj.color,
+            damage: Math.max(4, Math.floor(obj.damage * 0.7)),
+            trail: [],
+            type: obj.type,
+            bouncy: false,
+            spiral: false,
+            spiralPhase: 0,
+            homing: false,
+            splittable: false,
+            splitting: false,
+            splitCount: obj.splitCount + 1,
+            electric: false,
+            fragile: false,
+            freeze: false,
+            health: 999
+          };
+          projectiles.push(newProj);
+        }
+        createParticles(obj.x, obj.y, obj.color, 8);
+        return 'split';
+      }
+
       // Handle splitting projectiles - create 3 new ones immediately when hitting shield
       if(obj.splitting && obj.splitCount < 5) {
         const angleToPlayer = Math.atan2(hero.y - obj.y, hero.x - obj.x);
-        
+
         for(let i = -1; i <= 1; i++) {
           const spreadAngle = angleToPlayer + (i * 0.25);
           const newProj = {

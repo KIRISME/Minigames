@@ -1,0 +1,672 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dodge Ball</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: "Arial", sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+
+        #hud {
+            position: fixed;
+            top: 10px;
+            left: 10px;
+            color: white;
+            font-size: 0.9em;
+            background: rgba(0, 0, 0, 0.7);
+            padding: 8px 15px;
+            border-radius: 6px;
+            z-index: 50;
+            border: 1px solid #667eea;
+        }
+
+        #hud div {
+            margin: 2px 0;
+            line-height: 1.3;
+        }
+
+        .label {
+            color: #aaa;
+            font-size: 0.85em;
+        }
+
+        .value {
+            color: #00ff88;
+            font-weight: bold;
+        }
+
+        canvas {
+            border: 4px solid white;
+            box-shadow: 0 0 20px rgba(0, 0, 0, 0.3);
+            background: #000;
+            display: block;
+        }
+
+        #menu {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: rgba(0, 0, 0, 0.95);
+            color: white;
+            padding: 40px;
+            border-radius: 12px;
+            text-align: center;
+            z-index: 100;
+            border: 3px solid #667eea;
+        }
+
+        #menu h1 {
+            font-size: 2.5em;
+            margin-bottom: 20px;
+            color: #00ff88;
+        }
+
+        #menu p {
+            margin: 15px 0;
+            font-size: 1.1em;
+            color: #ccc;
+        }
+
+        #menu button {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            padding: 15px 30px;
+            margin: 10px;
+            border-radius: 8px;
+            font-size: 1em;
+            cursor: pointer;
+            transition: transform 0.2s;
+        }
+
+        #menu button:hover {
+            transform: scale(1.05);
+        }
+
+        .hidden {
+            display: none;
+        }
+    </style>
+</head>
+<body>
+    <canvas id="gameCanvas" width="800" height="600"></canvas>
+    
+    <div id="hud">
+        <div><span class="label">Score:</span> <span class="value" id="scoreValue">0</span> | <span class="label">Trapped:</span> <span class="value" id="trappedValue">0</span> | <span class="label">Enemies:</span> <span class="value" id="enemiesValue">1</span></div>
+        <div><span class="label">Don't touch the floor or lava! | Build to climb! | A/D: Move | W/SPACE: Jump | Hold Mouse: Minigun</span></div>
+    </div>
+
+    <div id="menu">
+        <h1>🎯 Block Builder</h1>
+        <p>Build your way across the lava!</p>
+        <p id="menuMessage">Click Start to begin</p>
+        <button onclick="startGame()">Start Game</button>
+        <button onclick="location.href='../index.html'">Back to Menu</button>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        const menu = document.getElementById('menu');
+        
+        const ARENA_WIDTH = 800;
+        const ARENA_HEIGHT = 600;
+        const ARENA_PADDING = 20;
+        const WORLD_WIDTH = 1600;
+        const WORLD_HEIGHT = 2000;
+        const FLOOR_LEVEL = WORLD_HEIGHT - 300; // Floor where blocks can sit
+        const LAVA_LEVEL = WORLD_HEIGHT - 50; // Lava at bottom
+        const START_HEIGHT = FLOOR_LEVEL - 150;
+        const GRAVITY = 0.4;
+        const JUMP_STRENGTH = 12;
+
+        let gameRunning = false;
+        let time = 0;
+        let keys = {};
+        let balls = [];
+        let enemies = [];
+        let gameOverFlag = false;
+        let score = 0;
+        let trappedCount = 0;
+        
+        const camera = {
+            x: 0,
+            y: 0
+        };
+        
+        const mouse = {
+            x: ARENA_WIDTH / 2,
+            y: ARENA_HEIGHT / 2,
+            distToPlayer: 0,
+            angle: 0,
+            isDown: false
+        };
+
+        const player = {
+            x: WORLD_WIDTH / 2,
+            y: START_HEIGHT,
+            vy: 0,
+            radius: 15,
+            speed: 3,
+            isOnGround: true,
+            throwReady: true,
+            throwCooldown: 0
+        };
+
+        function createEnemy() {
+            const x = Math.random() * (WORLD_WIDTH - 100) + 50;
+            return {
+                x: x,
+                y: START_HEIGHT - 150,
+                vx: (Math.random() - 0.5) * 2,
+                radius: 12,
+                trapped: false,
+                trappedTimer: 0,
+                trapDuration: 3
+            };
+        }
+
+        function spawnEnemies() {
+            enemies = [];
+            // Start with some enemies
+            for (let i = 0; i < Math.min(2, Math.floor(time / 30) + 1); i++) {
+                enemies.push(createEnemy());
+            }
+        }
+
+        function throwBall() {
+            if (!player.throwReady) return;
+            
+            // Convert screen mouse coordinates to world coordinates
+            const worldMouseX = mouse.x + camera.x;
+            const worldMouseY = mouse.y + camera.y;
+            
+            const dx = worldMouseX - player.x;
+            const dy = worldMouseY - player.y;
+            const dist = Math.sqrt(dx * dx + dy * dy);
+            
+            if (dist < 5) return; // Don't throw if too close
+            
+            // Scale speed with distance - throw as far as aimed
+            const speed = Math.min(12, dist / 50); // Faster throw for farther aiming
+            const vx = (dx / dist) * speed;
+            const vy = (dy / dist) * speed;
+            
+            balls.push({
+                x: player.x,
+                y: player.y - player.radius,
+                vx: vx,
+                vy: vy,
+                size: 24,
+                life: 0
+            });
+            
+            player.throwReady = false;
+            player.throwCooldown = 0.05; // 0.05 second cooldown for minigun effect
+        }
+
+        function updateBalls() {
+            balls.forEach((ball, index) => {
+                // Apply gravity to ball
+                ball.vy += GRAVITY;
+                
+                ball.x += ball.vx;
+                ball.y += ball.vy;
+                ball.life += 1 / 60;
+
+                let hitGround = false;
+
+                // Check collision with other blocks for stacking
+                balls.forEach((otherBall, otherIndex) => {
+                    if (index === otherIndex) return; // Skip self
+                    if (ball.vy <= 0) return; // Only stack if falling
+                    
+                    // AABB collision detection
+                    const ballLeft = ball.x - ball.size / 2;
+                    const ballRight = ball.x + ball.size / 2;
+                    const ballTop = ball.y - ball.size / 2;
+                    const ballBottom = ball.y + ball.size / 2;
+                    
+                    const otherLeft = otherBall.x - otherBall.size / 2;
+                    const otherRight = otherBall.x + otherBall.size / 2;
+                    const otherTop = otherBall.y - otherBall.size / 2;
+                    const otherBottom = otherBall.y + otherBall.size / 2;
+                    
+                    // Check if horizontally overlapping
+                    const horizontalOverlap = ballLeft < otherRight && ballRight > otherLeft;
+                    
+                    // Check if this block is falling onto the other block
+                    if (horizontalOverlap && ballBottom >= otherTop && ballTop < otherTop) {
+                        // Stack on top
+                        ball.y = otherTop - ball.size / 2;
+                        ball.vy = 0;
+                        ball.vx *= 0.8; // Friction
+                        hitGround = true;
+                    }
+                });
+
+                // Bounce off side walls
+                if (ball.x - ball.size / 2 < ARENA_PADDING) {
+                    ball.x = ARENA_PADDING + ball.size / 2;
+                    ball.vx = Math.abs(ball.vx) * 0.8;
+                } else if (ball.x + ball.size / 2 > WORLD_WIDTH - ARENA_PADDING) {
+                    ball.x = WORLD_WIDTH - ARENA_PADDING - ball.size / 2;
+                    ball.vx = -Math.abs(ball.vx) * 0.8;
+                }
+
+                // Stop on floor - don't bounce
+                if (!hitGround && ball.y + ball.size / 2 > FLOOR_LEVEL) {
+                    ball.y = FLOOR_LEVEL - ball.size / 2;
+                    ball.vy = 0;
+                    ball.vx *= 0.95; // Friction
+                }
+
+                // Remove if too old
+                if (ball.life > 30) {
+                    balls.splice(index, 1);
+                    return;
+                }
+
+                // Check collision with enemies
+                enemies.forEach((enemy, eIndex) => {
+                    const dx = enemy.x - ball.x;
+                    const dy = enemy.y - ball.y;
+                    const dist = Math.sqrt(dx * dx + dy * dy);
+                    
+                    if (dist < enemy.radius + ball.size / 2 && !enemy.trapped) {
+                        // Hit! Trap the enemy
+                        enemy.trapped = true;
+                        enemy.trappedTimer = 0;
+                        score += 10;
+                        trappedCount++;
+                        balls.splice(index, 1);
+                    }
+                });
+            });
+        }
+
+        function updateEnemies() {
+            enemies.forEach((enemy, index) => {
+                if (enemy.trapped) {
+                    enemy.trappedTimer += 1 / 60;
+                    if (enemy.trappedTimer >= enemy.trapDuration) {
+                        enemy.trapped = false;
+                        enemy.trappedTimer = 0;
+                    }
+                    return;
+                }
+
+                // Move enemy
+                enemy.x += enemy.vx;
+
+                // Bounce off walls
+                if (enemy.x - enemy.radius < ARENA_PADDING) {
+                    enemy.x = ARENA_PADDING + enemy.radius;
+                    enemy.vx = Math.abs(enemy.vx);
+                } else if (enemy.x + enemy.radius > WORLD_WIDTH - ARENA_PADDING) {
+                    enemy.x = WORLD_WIDTH - ARENA_PADDING - enemy.radius;
+                    enemy.vx = -Math.abs(enemy.vx);
+                }
+
+                // Check lava collision - remove enemy
+                if (enemy.y > LAVA_LEVEL) {
+                    enemies.splice(index, 1);
+                    return;
+                }
+
+                // Occasionally change direction
+                if (Math.random() < 0.01) {
+                    enemy.vx = (Math.random() - 0.5) * 3;
+                }
+            });
+        }
+
+        function updateGame() {
+            if (gameOverFlag) return;
+
+            // Update throwCooldown
+            if (!player.throwReady) {
+                player.throwCooldown -= 1 / 60;
+                if (player.throwCooldown <= 0) {
+                    player.throwReady = true;
+                }
+            }
+
+            // Minigun mode - hold mouse to continuously throw
+            if (mouse.isDown && gameRunning) {
+                throwBall();
+            }
+
+            // Spawn additional enemies over time
+            if (Math.floor(time) % 30 === 0 && Math.floor(time) > 0 && enemies.length < Math.floor(time / 30) + 2 && enemies.length < 6) {
+                enemies.push(createEnemy());
+            }
+
+            // Apply gravity to player
+            player.vy += GRAVITY;
+
+            // Handle player jumping with W or SPACE
+            if ((keys[' '] || keys['spacebar'] || keys['w']) && player.isOnGround) {
+                player.vy = -JUMP_STRENGTH;
+                player.isOnGround = false;
+            }
+
+            // Handle horizontal movement
+            if (keys['a'] || keys['arrowleft']) {
+                player.x -= player.speed;
+            }
+            if (keys['d'] || keys['arrowright']) {
+                player.x += player.speed;
+            }
+
+            // Apply vertical velocity
+            player.y += player.vy;
+
+            // Keep player in horizontal bounds
+            player.x = Math.max(player.radius + ARENA_PADDING, Math.min(WORLD_WIDTH - ARENA_PADDING - player.radius, player.x));
+            
+            // Check floor collision - player dies if touching floor
+            if (player.y + player.radius > FLOOR_LEVEL) {
+                gameOver();
+                return;
+            }
+
+            // Check lava collision
+            if (player.y + player.radius > LAVA_LEVEL) {
+                gameOver();
+                return;
+            }
+
+            // Check collision with blocks for standing on them
+            let onBlock = false;
+            balls.forEach(block => {
+                if (player.vy <= 0) return; // Only collide when falling
+                
+                const playerLeft = player.x - player.radius;
+                const playerRight = player.x + player.radius;
+                const playerTop = player.y - player.radius;
+                const playerBottom = player.y + player.radius;
+                
+                const blockLeft = block.x - block.size / 2;
+                const blockRight = block.x + block.size / 2;
+                const blockTop = block.y - block.size / 2;
+                const blockBottom = block.y + block.size / 2;
+                
+                // Check if horizontally overlapping
+                const horizontalOverlap = playerLeft < blockRight && playerRight > blockLeft;
+                
+                // Check if player is falling onto block
+                if (horizontalOverlap && playerBottom >= blockTop && playerTop < blockTop) {
+                    player.y = blockTop - player.radius;
+                    player.vy = 0;
+                    player.isOnGround = true;
+                    onBlock = true;
+                }
+            });
+            
+            if (!onBlock) {
+                player.isOnGround = false;
+            }
+
+            // Update camera to follow player - center player on screen
+            camera.x = player.x - ARENA_WIDTH / 2;
+            camera.y = player.y - ARENA_HEIGHT / 2;
+            
+            // Clamp camera to world bounds
+            camera.x = Math.max(0, Math.min(WORLD_WIDTH - ARENA_WIDTH, camera.x));
+            camera.y = Math.max(0, Math.min(WORLD_HEIGHT - ARENA_HEIGHT, camera.y));
+
+            // Update balls and enemies
+            updateBalls();
+            updateEnemies();
+
+            // Update timer
+            time += 1 / 60;
+        }
+
+        function draw() {
+            // Clear canvas with gradient background
+            const gradient = ctx.createLinearGradient(0, 0, ARENA_WIDTH, ARENA_HEIGHT);
+            gradient.addColorStop(0, '#1a1a2e');
+            gradient.addColorStop(1, '#16213e');
+            ctx.fillStyle = gradient;
+            ctx.fillRect(0, 0, ARENA_WIDTH, ARENA_HEIGHT);
+
+            // Save context and apply camera transform
+            ctx.save();
+            ctx.translate(-camera.x, -camera.y);
+
+            // Draw lava at bottom
+            ctx.fillStyle = '#ff3300';
+            ctx.fillRect(0, LAVA_LEVEL, WORLD_WIDTH, WORLD_HEIGHT - LAVA_LEVEL);
+            
+            // Lava effect - animated waves
+            ctx.fillStyle = 'rgba(255, 100, 0, 0.3)';
+            for (let i = 0; i < WORLD_WIDTH; i += 40) {
+                const waveY = LAVA_LEVEL + Math.sin((i + time * 50) / 50) * 5;
+                ctx.beginPath();
+                ctx.arc(i, waveY, 8, 0, Math.PI * 2);
+                ctx.fill();
+            }
+
+            // Draw floor where blocks land
+            ctx.fillStyle = '#8b7355';
+            ctx.fillRect(0, FLOOR_LEVEL, WORLD_WIDTH, LAVA_LEVEL - FLOOR_LEVEL);
+            
+            // Floor edge highlight
+            ctx.strokeStyle = '#a0826d';
+            ctx.lineWidth = 3;
+            ctx.beginPath();
+            ctx.moveTo(0, FLOOR_LEVEL);
+            ctx.lineTo(WORLD_WIDTH, FLOOR_LEVEL);
+            ctx.stroke();
+
+            // Draw enemies
+            enemies.forEach(enemy => {
+                if (enemy.trapped) {
+                    // Trapped enemy - show as frozen/caged
+                    ctx.fillStyle = 'rgba(100, 100, 255, 0.3)';
+                    ctx.fillRect(enemy.x - enemy.radius - 5, enemy.y - enemy.radius - 5, enemy.radius * 2 + 10, enemy.radius * 2 + 10);
+                    ctx.strokeStyle = '#6464ff';
+                    ctx.lineWidth = 2;
+                    ctx.strokeRect(enemy.x - enemy.radius - 5, enemy.y - enemy.radius - 5, enemy.radius * 2 + 10, enemy.radius * 2 + 10);
+                }
+
+                ctx.fillStyle = '#ff4444';
+                ctx.beginPath();
+                ctx.arc(enemy.x, enemy.y, enemy.radius, 0, Math.PI * 2);
+                ctx.fill();
+                
+                // Enemy eyes
+                ctx.fillStyle = '#fff';
+                ctx.beginPath();
+                ctx.arc(enemy.x - 4, enemy.y - 2, 2, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.beginPath();
+                ctx.arc(enemy.x + 4, enemy.y - 2, 2, 0, Math.PI * 2);
+                ctx.fill();
+            });
+
+            // Draw blocks
+            balls.forEach(block => {
+                const hue = (block.life * 60) % 360;
+                ctx.fillStyle = `hsl(${hue}, 100%, 50%)`;
+                ctx.fillRect(block.x - block.size / 2, block.y - block.size / 2, block.size, block.size);
+
+                // Block edge highlight
+                ctx.strokeStyle = 'rgba(255, 255, 255, 0.5)';
+                ctx.lineWidth = 2;
+                ctx.strokeRect(block.x - block.size / 2, block.y - block.size / 2, block.size, block.size);
+            });
+
+            // Draw player
+            const playerGradient = ctx.createRadialGradient(player.x - 5, player.y - 5, 0, player.x, player.y, player.radius);
+            playerGradient.addColorStop(0, '#ffeb3b');
+            playerGradient.addColorStop(1, '#ffc107');
+            ctx.fillStyle = playerGradient;
+            ctx.beginPath();
+            ctx.arc(player.x, player.y, player.radius, 0, Math.PI * 2);
+            ctx.fill();
+
+            // Player outline
+            ctx.strokeStyle = '#ff9800';
+            ctx.lineWidth = 3;
+            ctx.stroke();
+
+            // Player eyes
+            ctx.fillStyle = '#000';
+            ctx.beginPath();
+            ctx.arc(player.x - 5, player.y - 3, 2, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.beginPath();
+            ctx.arc(player.x + 5, player.y - 3, 2, 0, Math.PI * 2);
+            ctx.fill();
+
+            // Draw aiming line to mouse (convert mouse to world coords)
+            const worldMouseX = mouse.x + camera.x;
+            const worldMouseY = mouse.y + camera.y;
+            const dx = worldMouseX - player.x;
+            const dy = worldMouseY - player.y;
+            const dist = Math.sqrt(dx * dx + dy * dy);
+            
+            if (dist > 5) {
+                ctx.strokeStyle = player.throwReady ? 'rgba(0, 255, 136, 0.6)' : 'rgba(255, 100, 100, 0.6)';
+                ctx.lineWidth = 2;
+                ctx.setLineDash([5, 5]);
+                ctx.beginPath();
+                ctx.moveTo(player.x, player.y - player.radius);
+                ctx.lineTo(worldMouseX, worldMouseY);
+                ctx.stroke();
+                ctx.setLineDash([]);
+                
+                // Draw aim target
+                ctx.fillStyle = player.throwReady ? 'rgba(0, 255, 136, 0.3)' : 'rgba(255, 100, 100, 0.3)';
+                ctx.beginPath();
+                ctx.arc(worldMouseX, worldMouseY, 8, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.strokeStyle = player.throwReady ? 'rgba(0, 255, 136, 0.8)' : 'rgba(255, 100, 100, 0.8)';
+                ctx.lineWidth = 2;
+                ctx.stroke();
+            }
+
+            // Draw jump indicator when airborne
+            if (!player.isOnGround) {
+                ctx.strokeStyle = 'rgba(255, 235, 59, 0.5)';
+                ctx.lineWidth = 2;
+                ctx.setLineDash([5, 5]);
+                ctx.beginPath();
+                ctx.arc(player.x, player.y, player.radius + 5, 0, Math.PI * 2);
+                ctx.stroke();
+                ctx.setLineDash([]);
+            }
+
+            // Restore context
+            ctx.restore();
+        }
+
+        function gameLoop() {
+            if (!gameRunning) return;
+
+            updateGame();
+            draw();
+            updateHUD();
+
+            requestAnimationFrame(gameLoop);
+        }
+
+        function updateHUD() {
+            document.getElementById('scoreValue').textContent = score;
+            document.getElementById('trappedValue').textContent = trappedCount;
+            document.getElementById('enemiesValue').textContent = enemies.length;
+        }
+
+        function gameOver() {
+            if (gameOverFlag) return;
+            gameOverFlag = true;
+            gameRunning = false;
+            const message = `Game Over! Score: ${score} | Enemies Trapped: ${trappedCount}`;
+            document.getElementById('menuMessage').textContent = message;
+            menu.classList.remove('hidden');
+        }
+
+        function startGame() {
+            gameRunning = true;
+            gameOverFlag = false;
+            menu.classList.add('hidden');
+            time = 0;
+            score = 0;
+            trappedCount = 0;
+            balls = [];
+            player.x = WORLD_WIDTH / 2;
+            player.y = START_HEIGHT;
+            player.vy = 0;
+            player.isOnGround = true;
+            player.throwReady = true;
+            camera.x = 0;
+            camera.y = 0;
+            spawnEnemies();
+            gameLoop();
+        }
+
+        // Input handling
+        window.addEventListener('keydown', (e) => {
+            keys[e.key.toLowerCase()] = true;
+        });
+
+        window.addEventListener('keyup', (e) => {
+            keys[e.key.toLowerCase()] = false;
+        });
+
+        // Mouse tracking
+        canvas.addEventListener('mousemove', (e) => {
+            const rect = canvas.getBoundingClientRect();
+            mouse.x = e.clientX - rect.left;
+            mouse.y = e.clientY - rect.top;
+        });
+
+        canvas.addEventListener('mousedown', () => {
+            mouse.isDown = true;
+        });
+
+        canvas.addEventListener('mouseup', () => {
+            mouse.isDown = false;
+        });
+
+        // Touch support
+        canvas.addEventListener('touchmove', (e) => {
+            e.preventDefault();
+            const rect = canvas.getBoundingClientRect();
+            const touch = e.touches[0];
+            mouse.x = touch.clientX - rect.left;
+            mouse.y = touch.clientY - rect.top;
+        });
+
+        canvas.addEventListener('touchstart', () => {
+            mouse.isDown = true;
+        });
+
+        canvas.addEventListener('touchend', () => {
+            mouse.isDown = false;
+        });
+
+        // Initialize
+        document.getElementById('menu').classList.remove('hidden');
+    </script>
+</body>
+</html>
