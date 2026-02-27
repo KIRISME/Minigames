@@ -113,6 +113,24 @@
             transform: scale(1.08);
         }
 
+        .toggleBtn {
+            background: rgba(255,255,255,0.08);
+            color: #ccc;
+            border: 2px solid rgba(255,255,255,0.25);
+            padding: 9px 18px;
+            margin: 5px;
+            border-radius: 8px;
+            font-size: 0.95em;
+            cursor: pointer;
+            transition: all 0.15s;
+        }
+        .toggleBtn.on {
+            background: rgba(0,255,136,0.2);
+            color: #00ff88;
+            border-color: #00ff88;
+            font-weight: bold;
+        }
+
         #enemyCountLabel {
             margin: 12px 0 4px 0;
             font-size: 1em;
@@ -132,6 +150,7 @@
         <div><span class="label">Score:</span> <span class="value" id="scoreValue">0</span> | <span class="label">Trapped:</span> <span class="value" id="trappedValue">0</span> | <span class="label">Enemies:</span> <span class="value" id="enemiesValue">1</span></div>
         <div><span class="label">Don't touch the floor or lava! | Build to climb! | A/D: Move | W/SPACE: Jump | Hold Mouse: Minigun</span></div>
     </div>
+    <button id="pauseBtn" onclick="togglePause()">⏸ Pause [P]</button>
 
     <div id="menu">
         <h1>🎯 Block Builder</h1>
@@ -141,7 +160,12 @@
         <div id="enemyCountBtns">
             <button class="enemyCountBtn selected" onclick="setEnemyCount(1,this)">1</button>
             <button class="enemyCountBtn" onclick="setEnemyCount(5,this)">5</button>
-            <button class="enemyCountBtn" onclick="setEnemyCount(100,this)">100</button>
+            <button class="enemyCountBtn" onclick="setEnemyCount(10,this)">10</button>
+        </div>
+        <p style="margin-top:14px;margin-bottom:6px;color:#aaa;font-size:0.9em;">Game modifiers:</p>
+        <div>
+            <button class="toggleBtn" id="blockRainBtn" onclick="toggleOpt('blockRain',this)">🌧 Block Rain</button>
+            <button class="toggleBtn" id="noFloorBtn" onclick="toggleOpt('noFloor',this)">🟢 No Floor</button>
         </div>
         <button onclick="startGame()">Start Game</button>
         <button onclick="location.href='../index.html'">Back to Menu</button>
@@ -173,6 +197,23 @@
         let gameOverFlag = false;
         let score = 0;
         let trappedCount = 0;
+
+        // Build modes
+        const BUILD_MODES = [
+            { id: 'block',   label: '🧱 Block',   w: 24, h: 24, cooldown: 0.005 },
+            { id: 'plank',   label: '🪵 Plank',   w: 48, h: 12, cooldown: 0.008 },
+            { id: 'pillar',  label: '🏛 Pillar',  w: 12, h: 48, cooldown: 0.008 },
+            { id: 'bomb',    label: '💣 Bomb',    w: 22, h: 22, cooldown: 0.00001  },
+            { id: 'boulder', label: '🪨 Boulder', w: 40, h: 40, cooldown: 0.002  },
+        ];
+        let buildMode = 'block';
+        let explosions = []; // { x, y, r, maxR, life, maxLife }
+
+        // Modifier options
+        let blockRainEnabled = false;
+        let noFloorEnabled = false;
+        let gamePaused = false;
+        let blockRainTimer = 0;
         
         const camera = {
             x: 0,
@@ -190,10 +231,10 @@
         const player = {
             x: WORLD_WIDTH / 2,
             y: START_HEIGHT,
+            vx: 0,
             vy: 0,
             radius: 15,
-            speed: 3,
-            isOnGround: true,
+            speed: 15,
             throwReady: true,
             throwCooldown: 0
         };
@@ -268,6 +309,20 @@
 
         let startingEnemyCount = 1;
 
+        function toggleOpt(opt, btn) {
+            if (opt === 'blockRain') { blockRainEnabled = !blockRainEnabled; }
+            if (opt === 'noFloor') { noFloorEnabled = !noFloorEnabled; }
+            btn.classList.toggle('on');
+        }
+
+        function togglePause() {
+            if (!gameRunning) return;
+            gamePaused = !gamePaused;
+            document.getElementById('pauseBtn').textContent = gamePaused ? '▶ Resume [P]' : '⏸ Pause [P]';
+            if (!gamePaused) gameLoop();
+        }
+
+
         function setEnemyCount(count, btn) {
             startingEnemyCount = count;
             document.querySelectorAll('.enemyCountBtn').forEach(b => b.classList.remove('selected'));
@@ -295,27 +350,24 @@
             if (dist < 5) return; // Don't throw if too close
             
             // Scale speed with distance - throw as far as aimed
-            const speed = Math.min(12, dist / 50); // Faster throw for farther aiming
+            const speed = Math.min(24, dist / 25); // Faster throw for farther aiming
             const vx = (dx / dist) * speed;
             const vy = (dy / dist) * speed;
             
-            balls.push({
-                x: player.x,
-                y: player.y - player.radius,
-                vx: vx,
-                vy: vy,
-                size: 24,
-                life: 0
-            });
+            const mode = BUILD_MODES.find(m => m.id === buildMode);
+            const bl = { x: player.x, y: player.y - player.radius, vx, vy, w: mode.w, h: mode.h, shape: buildMode, life: 0 };
+            if (buildMode === 'bomb')    bl.bombTimer = 1.8;
+            if (buildMode === 'boulder') bl.gravMult  = 2.2;
+            balls.push(bl);
             
             player.throwReady = false;
-            player.throwCooldown = 0.05; // 0.05 second cooldown for minigun effect
+            player.throwCooldown = mode.cooldown;
         }
 
         function updateBalls() {
             balls.forEach((ball, index) => {
                 // Apply gravity to ball
-                ball.vy += GRAVITY;
+                ball.vy += GRAVITY * (ball.gravMult || 1);
                 
                 ball.x += ball.vx;
                 ball.y += ball.vy;
@@ -329,15 +381,15 @@
                     if (ball.vy <= 0) return; // Only stack if falling
                     
                     // AABB collision detection
-                    const ballLeft = ball.x - ball.size / 2;
-                    const ballRight = ball.x + ball.size / 2;
-                    const ballTop = ball.y - ball.size / 2;
-                    const ballBottom = ball.y + ball.size / 2;
+                    const ballLeft   = ball.x - ball.w / 2;
+                    const ballRight  = ball.x + ball.w / 2;
+                    const ballTop    = ball.y - ball.h / 2;
+                    const ballBottom = ball.y + ball.h / 2;
                     
-                    const otherLeft = otherBall.x - otherBall.size / 2;
-                    const otherRight = otherBall.x + otherBall.size / 2;
-                    const otherTop = otherBall.y - otherBall.size / 2;
-                    const otherBottom = otherBall.y + otherBall.size / 2;
+                    const otherLeft   = otherBall.x - otherBall.w / 2;
+                    const otherRight  = otherBall.x + otherBall.w / 2;
+                    const otherTop    = otherBall.y - otherBall.h / 2;
+                    const otherBottom = otherBall.y + otherBall.h / 2;
                     
                     // Check if horizontally overlapping
                     const horizontalOverlap = ballLeft < otherRight && ballRight > otherLeft;
@@ -345,7 +397,7 @@
                     // Check if this block is falling onto the other block
                     if (horizontalOverlap && ballBottom >= otherTop && ballTop < otherTop) {
                         // Stack on top
-                        ball.y = otherTop - ball.size / 2;
+                        ball.y = otherTop - ball.h / 2;
                         ball.vy = 0;
                         ball.vx *= 0.8; // Friction
                         hitGround = true;
@@ -353,26 +405,71 @@
                 });
 
                 // Bounce off side walls
-                if (ball.x - ball.size / 2 < ARENA_PADDING) {
-                    ball.x = ARENA_PADDING + ball.size / 2;
+                if (ball.x - ball.w / 2 < ARENA_PADDING) {
+                    ball.x = ARENA_PADDING + ball.w / 2;
                     ball.vx = Math.abs(ball.vx) * 0.8;
-                } else if (ball.x + ball.size / 2 > WORLD_WIDTH - ARENA_PADDING) {
-                    ball.x = WORLD_WIDTH - ARENA_PADDING - ball.size / 2;
+                } else if (ball.x + ball.w / 2 > WORLD_WIDTH - ARENA_PADDING) {
+                    ball.x = WORLD_WIDTH - ARENA_PADDING - ball.w / 2;
                     ball.vx = -Math.abs(ball.vx) * 0.8;
                 }
 
                 // Stop on floor - don't bounce
-                if (!hitGround && ball.y + ball.size / 2 > FLOOR_LEVEL) {
-                    ball.y = FLOOR_LEVEL - ball.size / 2;
+                if (!hitGround && ball.y + ball.h / 2 > FLOOR_LEVEL) {
+                    ball.y = FLOOR_LEVEL - ball.h / 2;
                     ball.vy = 0;
                     ball.vx *= 0.95; // Friction
                 }
 
-                // Remove if too old
-                if (ball.life > 30) {
-                    balls.splice(index, 1);
-                    return;
+                // Bomb countdown
+                if (ball.shape === 'bomb' && ball.bombTimer !== undefined) {
+                    ball.bombTimer -= 1 / 60;
+                    if (ball.bombTimer <= 0) {
+                        const BOMB_RADIUS = 110;
+                        const bx = ball.x, by = ball.y;
+
+                        // Blast other blocks away (skip bomb itself)
+                        balls.forEach((bl, bi) => {
+                            if (bi === index) return;
+                            const dx = bl.x - bx, dy = bl.y - by;
+                            const d = Math.hypot(dx, dy) || 1;
+                            if (d < BOMB_RADIUS + Math.max(bl.w, bl.h)) {
+                                const force = (1 - d / (BOMB_RADIUS + 80)) * 22;
+                                bl.vx += (dx / d) * force;
+                                bl.vy += (dy / d) * force - 5;
+                            }
+                        });
+
+                        // Blast enemies away
+                        enemies.forEach(e => {
+                            const dx = e.x - bx, dy = e.y - by;
+                            const d = Math.hypot(dx, dy) || 1;
+                            if (d < BOMB_RADIUS + e.radius) {
+                                const force = (1 - d / (BOMB_RADIUS + 60)) * 18;
+                                e.vx = (dx / d) * force;
+                                e.vy = (dy / d) * force - 6;
+                                if (!e.noFreeze && !e.trapped) { e.trapped = true; e.trappedTimer = 0; score += 20; trappedCount++; }
+                            }
+                        });
+
+                        // Blast player
+                        const pdx = player.x - bx, pdy = player.y - by;
+                        const pd = Math.hypot(pdx, pdy) || 1;
+                        if (pd < BOMB_RADIUS + player.radius * 2) {
+                            const force = (1 - pd / (BOMB_RADIUS + 60)) * 20;
+                            player.vx = (player.vx || 0) + (pdx / pd) * force;
+                            player.vy += (pdy / pd) * force - 8;
+                            player.isOnGround = false;
+                        }
+
+                        // Spawn shockwave ring
+                        explosions.push({ x: bx, y: by, r: 10, maxR: BOMB_RADIUS * 1.1, life: 0.55, maxLife: 0.55 });
+
+                        balls.splice(index, 1);
+                        return;
+                    }
                 }
+
+                // Blocks are permanent — only removed by enemies or bomb blast
 
                 // Check collision with enemies
                 enemies.forEach((enemy, eIndex) => {
@@ -380,7 +477,7 @@
                     const dx = enemy.x - ball.x;
                     const dy = enemy.y - ball.y;
                     const dist = Math.sqrt(dx * dx + dy * dy);
-                    if (dist < enemy.radius + ball.size / 2 && !enemy.trapped) {
+                    if (dist < enemy.radius + Math.max(ball.w, ball.h) / 2 && !enemy.trapped) {
                         // Stealth: balls pass through while invisible
                         if (enemy.type === 'stealth' && !enemy.visible) return;
                         // Ghost: only trappable while paused
@@ -454,16 +551,7 @@
                     enemy.vx = Math.max(-6, Math.min(6, enemy.vx));
 
                 } else if (enemy.type === 'jumper') {
-                    enemy.vy = (enemy.vy || 0) + GRAVITY * 0.6;
-                    enemy.y += enemy.vy;
-                    const floorY = START_HEIGHT - 40;
-                    if (enemy.y + enemy.radius > floorY) {
-                        enemy.y = floorY - enemy.radius;
-                        enemy.jumpTimer = (enemy.jumpTimer || 0) + 1 / 60;
-                        if (enemy.jumpTimer > 1.8) { enemy.vy = -11; enemy.jumpTimer = 0; }
-                        else enemy.vy = 0;
-                    }
-                    if (enemy.y < CEIL_Y) { enemy.y = CEIL_Y; enemy.vy = Math.abs(enemy.vy) * 0.5; }
+                    // Physics (gravity, floor, block landing) handled by shared ground section below
 
                 } else if (enemy.type === 'zigzag') {
                     enemy.vy = enemy.vy || 2.5;
@@ -481,16 +569,7 @@
                         const dx = player.x - enemy.x;
                         enemy.vx = (dx / (Math.abs(dx)||1)) * (2 + Math.random());
                     }
-                    // Destroy any block it touches
-                    for (let bi = balls.length - 1; bi >= 0; bi--) {
-                        const bl = balls[bi];
-                        if (enemy.x + enemy.radius > bl.x - bl.size/2 &&
-                            enemy.x - enemy.radius < bl.x + bl.size/2 &&
-                            enemy.y + enemy.radius > bl.y - bl.size/2 &&
-                            enemy.y - enemy.radius < bl.y + bl.size/2) {
-                            balls.splice(bi, 1);
-                        }
-                    }
+                    // Block destruction handled by universal check below
 
                 } else if (enemy.type === 'ghost') {
                     // Randomly pause to allow trapping
@@ -596,6 +675,66 @@
                 if (enemy.x - enemy.radius < ARENA_PADDING) { enemy.x = ARENA_PADDING + enemy.radius; enemy.vx = Math.abs(enemy.vx); }
                 else if (enemy.x + enemy.radius > WORLD_WIDTH - ARENA_PADDING) { enemy.x = WORLD_WIDTH - ARENA_PADDING - enemy.radius; enemy.vx = -Math.abs(enemy.vx); }
 
+                // --- Shared ground-walker physics ---
+                // basic, fast, tank, destroyer, stealth, splitter, giant, jumper
+                // all use gravity, land on floors AND on placed blocks, jump to climb blocks
+                const GROUND_WALKERS = new Set(['basic','fast','tank','destroyer','stealth','splitter','giant','jumper']);
+                if (GROUND_WALKERS.has(enemy.type)) {
+                    // Apply gravity
+                    enemy.vy = (enemy.vy || 0) + GRAVITY;
+                    enemy.y += enemy.vy;
+
+                    let onSurface = false;
+
+                    // Land on top of placed blocks
+                    for (const bl of balls) {
+                        const bLeft = bl.x - bl.w / 2, bRight = bl.x + bl.w / 2;
+                        const bTop  = bl.y - bl.h / 2;
+                        if (enemy.x + enemy.radius > bLeft && enemy.x - enemy.radius < bRight) {
+                            const eBottom = enemy.y + enemy.radius;
+                            const prevBottom = eBottom - enemy.vy;
+                            if (eBottom >= bTop && prevBottom <= bTop + 2 && enemy.vy >= 0) {
+                                enemy.y = bTop - enemy.radius;
+                                enemy.vy = 0;
+                                onSurface = true;
+                                // Jumper: periodic jump, even on blocks
+                                if (enemy.type === 'jumper') {
+                                    enemy.jumpTimer = (enemy.jumpTimer || 0) + 1 / 60;
+                                    if (enemy.jumpTimer > 1.8) { enemy.vy = -11; enemy.jumpTimer = 0; }
+                                }
+                                break;
+                            }
+                        }
+                    }
+
+                    // Land on floor
+                    if (!onSurface && enemy.y + enemy.radius >= FLOOR_LEVEL) {
+                        enemy.y = FLOOR_LEVEL - enemy.radius;
+                        if (enemy.vy > 0) enemy.vy = 0;
+                        onSurface = true;
+                        if (enemy.type === 'jumper') {
+                            enemy.jumpTimer = (enemy.jumpTimer || 0) + 1 / 60;
+                            if (enemy.jumpTimer > 1.8) { enemy.vy = -11; enemy.jumpTimer = 0; }
+                        }
+                    }
+
+                    // Ceiling clamp
+                    if (enemy.y - enemy.radius < CEIL_Y) { enemy.y = CEIL_Y + enemy.radius; enemy.vy = Math.abs(enemy.vy) * 0.5; }
+                }
+
+                // --- Universal: ALL enemies destroy any block they overlap ---
+                // Uses AABB + 1px top margin so enemies standing on a block don't destroy it
+                for (let bi = balls.length - 1; bi >= 0; bi--) {
+                    const bl = balls[bi];
+                    if (bl.shape === 'bomb') continue; // bombs explode themselves
+                    const bLeft = bl.x - bl.w / 2, bRight  = bl.x + bl.w / 2;
+                    const bTop  = bl.y - bl.h / 2, bBottom = bl.y + bl.h / 2;
+                    if (enemy.x + enemy.radius > bLeft && enemy.x - enemy.radius < bRight &&
+                        enemy.y + enemy.radius > bTop + 1 && enemy.y - enemy.radius < bBottom) {
+                        balls.splice(bi, 1);
+                    }
+                }
+
                 // Remove if falls into lava
                 if (enemy.y > LAVA_LEVEL) { enemies.splice(index, 1); }
             }
@@ -603,6 +742,26 @@
 
         function updateGame() {
             if (gameOverFlag) return;
+
+            // --- Block rain ---
+            if (blockRainEnabled) {
+                blockRainTimer += 1 / 60;
+                if (blockRainTimer >= 2.2) {
+                    blockRainTimer = 0;
+                    const count = 2 + Math.floor(Math.random() * 3);
+                    for (let i = 0; i < count; i++) {
+                        const modes = BUILD_MODES.filter(m => m.id !== 'bomb');
+                        const m = modes[Math.floor(Math.random() * modes.length)];
+                        balls.push({
+                            x: ARENA_PADDING + Math.random() * (WORLD_WIDTH - ARENA_PADDING * 2),
+                            y: camera.y + 10,
+                            vx: (Math.random() - 0.5) * 4,
+                            vy: Math.random() * 2,
+                            w: m.w, h: m.h, shape: m.id, life: 0
+                        });
+                    }
+                }
+            }
 
             // Update throwCooldown
             if (!player.throwReady) {
@@ -634,10 +793,16 @@
             // Handle horizontal movement
             if (keys['a'] || keys['arrowleft']) {
                 player.x -= player.speed;
+                player.vx = 0; // direct input overrides blast vx
             }
             if (keys['d'] || keys['arrowright']) {
                 player.x += player.speed;
+                player.vx = 0;
             }
+
+            // Apply blast vx and decay
+            player.x += player.vx;
+            player.vx *= 0.82;
 
             // Apply vertical velocity
             player.y += player.vy;
@@ -645,13 +810,19 @@
             // Keep player in horizontal bounds
             player.x = Math.max(player.radius + ARENA_PADDING, Math.min(WORLD_WIDTH - ARENA_PADDING - player.radius, player.x));
             
-            // Check floor collision - player dies if touching floor
+            // Check floor collision - safe to land when noFloor is on, otherwise game over
             if (player.y + player.radius > FLOOR_LEVEL) {
-                gameOver();
-                return;
+                if (noFloorEnabled) {
+                    player.y = FLOOR_LEVEL - player.radius;
+                    if (player.vy > 0) player.vy = 0;
+                    player.isOnGround = true;
+                } else {
+                    gameOver();
+                    return;
+                }
             }
 
-            // Check lava collision
+            // Check lava collision (always kills)
             if (player.y + player.radius > LAVA_LEVEL) {
                 gameOver();
                 return;
@@ -660,31 +831,33 @@
             // Check collision with blocks for standing on them
             let onBlock = false;
             balls.forEach(block => {
-                if (player.vy <= 0) return; // Only collide when falling
-                
-                const playerLeft = player.x - player.radius;
-                const playerRight = player.x + player.radius;
-                const playerTop = player.y - player.radius;
+                const playerLeft   = player.x - player.radius;
+                const playerRight  = player.x + player.radius;
                 const playerBottom = player.y + player.radius;
-                
-                const blockLeft = block.x - block.size / 2;
-                const blockRight = block.x + block.size / 2;
-                const blockTop = block.y - block.size / 2;
-                const blockBottom = block.y + block.size / 2;
-                
-                // Check if horizontally overlapping
+
+                const blockLeft  = block.x - block.w / 2;
+                const blockRight = block.x + block.w / 2;
+                const blockTop   = block.y - block.h / 2;
+
                 const horizontalOverlap = playerLeft < blockRight && playerRight > blockLeft;
-                
-                // Check if player is falling onto block
-                if (horizontalOverlap && playerBottom >= blockTop && playerTop < blockTop) {
+
+                // Player is resting on or landing on this block
+                if (horizontalOverlap && playerBottom >= blockTop && playerBottom <= blockTop + Math.abs(player.vy) + 4) {
                     player.y = blockTop - player.radius;
-                    player.vy = 0;
+                    if (player.vy > 0) player.vy = 0;
                     player.isOnGround = true;
                     onBlock = true;
                 }
             });
-            
-            if (!onBlock) {
+
+            // Also count floor as ground when noFloor is on
+            if (noFloorEnabled && player.y + player.radius >= FLOOR_LEVEL) {
+                onBlock = true;
+                player.isOnGround = true;
+            }
+            if (!onBlock && !noFloorEnabled) {
+                player.isOnGround = false;
+            } else if (!onBlock && noFloorEnabled && player.y + player.radius < FLOOR_LEVEL) {
                 player.isOnGround = false;
             }
 
@@ -695,6 +868,14 @@
             // Clamp camera to world bounds
             camera.x = Math.max(0, Math.min(WORLD_WIDTH - ARENA_WIDTH, camera.x));
             camera.y = Math.max(0, Math.min(WORLD_HEIGHT - ARENA_HEIGHT, camera.y));
+
+            // Tick shockwave explosions
+            for (let i = explosions.length - 1; i >= 0; i--) {
+                const ex = explosions[i];
+                ex.r = ex.maxR * (1 - ex.life / ex.maxLife);
+                ex.life -= 1 / 60;
+                if (ex.life <= 0) explosions.splice(i, 1);
+            }
 
             // Update balls and enemies
             updateBalls();
@@ -719,7 +900,7 @@
             // Draw lava at bottom
             ctx.fillStyle = '#ff3300';
             ctx.fillRect(0, LAVA_LEVEL, WORLD_WIDTH, WORLD_HEIGHT - LAVA_LEVEL);
-            
+
             // Lava effect - animated waves
             ctx.fillStyle = 'rgba(255, 100, 0, 0.3)';
             for (let i = 0; i < WORLD_WIDTH; i += 40) {
@@ -729,12 +910,10 @@
                 ctx.fill();
             }
 
-            // Draw floor where blocks land
-            ctx.fillStyle = '#8b7355';
+            // Draw floor — green when safe (No Floor mode), brown otherwise
+            ctx.fillStyle = noFloorEnabled ? '#3a7a3a' : '#8b7355';
             ctx.fillRect(0, FLOOR_LEVEL, WORLD_WIDTH, LAVA_LEVEL - FLOOR_LEVEL);
-            
-            // Floor edge highlight
-            ctx.strokeStyle = '#a0826d';
+            ctx.strokeStyle = noFloorEnabled ? '#55cc55' : '#a0826d';
             ctx.lineWidth = 3;
             ctx.beginPath();
             ctx.moveTo(0, FLOOR_LEVEL);
@@ -938,16 +1117,82 @@
                 ctx.restore();
             });
 
+            // Draw shockwave rings (inside camera transform)
+            explosions.forEach(ex => {
+                const alpha = ex.life / ex.maxLife;
+                ctx.save();
+                ctx.globalAlpha = alpha * 0.75;
+                ctx.strokeStyle = 'hsl(30,100%,65%)';
+                ctx.lineWidth = 6 * alpha;
+                ctx.beginPath(); ctx.arc(ex.x, ex.y, ex.r, 0, Math.PI * 2); ctx.stroke();
+                ctx.globalAlpha = alpha * 0.18;
+                ctx.fillStyle = '#ff9922';
+                ctx.beginPath(); ctx.arc(ex.x, ex.y, ex.r, 0, Math.PI * 2); ctx.fill();
+                ctx.restore();
+            });
+
             // Draw blocks
             balls.forEach(block => {
-                const hue = (block.life * 60) % 360;
-                ctx.fillStyle = `hsl(${hue}, 100%, 50%)`;
-                ctx.fillRect(block.x - block.size / 2, block.y - block.size / 2, block.size, block.size);
+                ctx.save();
+                const hw = block.w / 2, hh = block.h / 2;
 
-                // Block edge highlight
-                ctx.strokeStyle = 'rgba(255, 255, 255, 0.5)';
-                ctx.lineWidth = 2;
-                ctx.strokeRect(block.x - block.size / 2, block.y - block.size / 2, block.size, block.size);
+                if (block.shape === 'bomb') {
+                    const pulse = 0.85 + 0.15 * Math.sin((block.bombTimer || 0) * 12);
+                    ctx.fillStyle = block.bombTimer < 0.55 ? '#ff3020' : '#1a1a1a';
+                    ctx.beginPath();
+                    ctx.arc(block.x, block.y, hw * pulse, 0, Math.PI * 2);
+                    ctx.fill();
+                    // Fuse arc (shows time left)
+                    const frac = Math.max(0, (block.bombTimer || 0) / 1.8);
+                    ctx.strokeStyle = '#ffdd00';
+                    ctx.lineWidth = 3;
+                    ctx.beginPath();
+                    ctx.arc(block.x, block.y, hw * pulse + 4, -Math.PI / 2, -Math.PI / 2 + frac * 2 * Math.PI);
+                    ctx.stroke();
+                    ctx.font = `${Math.round(hw * 1.3)}px serif`;
+                    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+                    ctx.fillText('\ud83d\udca3', block.x, block.y);
+
+                } else if (block.shape === 'plank') {
+                    const L = 40 + (block.life * 5) % 20;
+                    ctx.fillStyle = `hsl(28,65%,${L}%)`;
+                    ctx.fillRect(block.x - hw, block.y - hh, block.w, block.h);
+                    ctx.strokeStyle = 'rgba(0,0,0,0.22)'; ctx.lineWidth = 1;
+                    for (let g = -hw + 9; g < hw; g += 12) {
+                        ctx.beginPath(); ctx.moveTo(block.x+g, block.y-hh); ctx.lineTo(block.x+g, block.y+hh); ctx.stroke();
+                    }
+                    ctx.strokeStyle = 'rgba(255,220,150,0.6)'; ctx.lineWidth = 1.5;
+                    ctx.strokeRect(block.x - hw, block.y - hh, block.w, block.h);
+
+                } else if (block.shape === 'pillar') {
+                    const L = 42 + (block.life * 5) % 18;
+                    ctx.fillStyle = `hsl(210,12%,${L}%)`;
+                    ctx.fillRect(block.x - hw, block.y - hh, block.w, block.h);
+                    ctx.strokeStyle = 'rgba(0,0,0,0.28)'; ctx.lineWidth = 1;
+                    for (let g = -hh + 10; g < hh; g += 13) {
+                        ctx.beginPath(); ctx.moveTo(block.x-hw, block.y+g); ctx.lineTo(block.x+hw, block.y+g); ctx.stroke();
+                    }
+                    ctx.strokeStyle = 'rgba(200,215,225,0.55)'; ctx.lineWidth = 1.5;
+                    ctx.strokeRect(block.x - hw, block.y - hh, block.w, block.h);
+
+                } else if (block.shape === 'boulder') {
+                    const L = 30 + (block.life * 4) % 15;
+                    ctx.fillStyle = `hsl(25,18%,${L}%)`;
+                    ctx.beginPath();
+                    ctx.roundRect(block.x - hw, block.y - hh, block.w, block.h, hw * 0.38);
+                    ctx.fill();
+                    ctx.strokeStyle = 'rgba(255,255,255,0.22)'; ctx.lineWidth = 2;
+                    ctx.stroke();
+
+                } else {
+                    // Default block (rainbow)
+                    const hue = (block.life * 60) % 360;
+                    ctx.fillStyle = `hsl(${hue}, 100%, 50%)`;
+                    ctx.fillRect(block.x - hw, block.y - hh, block.w, block.h);
+                    ctx.strokeStyle = 'rgba(255,255,255,0.5)'; ctx.lineWidth = 2;
+                    ctx.strokeRect(block.x - hw, block.y - hh, block.w, block.h);
+                }
+                ctx.restore();
             });
 
             // Draw player
@@ -1013,10 +1258,50 @@
 
             // Restore context
             ctx.restore();
+
+            // --- Pause overlay ---
+            if (gamePaused) {
+                ctx.save();
+                ctx.fillStyle = 'rgba(0,0,0,0.55)';
+                ctx.fillRect(0, 0, ARENA_WIDTH, ARENA_HEIGHT);
+                ctx.fillStyle = 'white';
+                ctx.font = 'bold 48px Arial';
+                ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+                ctx.fillText('⏸ PAUSED', ARENA_WIDTH / 2, ARENA_HEIGHT / 2);
+                ctx.font = '22px Arial';
+                ctx.fillStyle = '#aaa';
+                ctx.fillText('Press P or click Resume to continue', ARENA_WIDTH / 2, ARENA_HEIGHT / 2 + 55);
+                ctx.restore();
+            }
+
+            // --- Build mode selector bar (screen-space) ---
+            if (gameRunning) {
+                const barW = 54, barH = 52, gap = 7;
+                const totalW = BUILD_MODES.length * (barW + gap) - gap;
+                const bx0 = (ARENA_WIDTH - totalW) / 2;
+                const by = ARENA_HEIGHT - 68;
+                BUILD_MODES.forEach((m, i) => {
+                    const bx = bx0 + i * (barW + gap);
+                    const sel = m.id === buildMode;
+                    ctx.save();
+                    ctx.fillStyle = sel ? 'rgba(0,255,136,0.22)' : 'rgba(0,0,0,0.62)';
+                    ctx.strokeStyle = sel ? '#00ff88' : 'rgba(255,255,255,0.28)';
+                    ctx.lineWidth = sel ? 2.5 : 1.5;
+                    ctx.beginPath(); ctx.roundRect(bx, by, barW, barH, 8); ctx.fill(); ctx.stroke();
+                    ctx.font = '20px serif';
+                    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+                    ctx.fillText(m.label.split(' ')[0], bx + barW / 2, by + 18);
+                    ctx.font = `bold 10px Arial`;
+                    ctx.fillStyle = sel ? '#00ff88' : '#aaa';
+                    ctx.fillText((i + 1) + ' ' + m.label.split(' ').slice(1).join(' '), bx + barW / 2, by + 40);
+                    ctx.restore();
+                });
+            }
         }
 
         function gameLoop() {
             if (!gameRunning) return;
+            if (gamePaused) return;
 
             updateGame();
             draw();
@@ -1035,6 +1320,8 @@
             if (gameOverFlag) return;
             gameOverFlag = true;
             gameRunning = false;
+            gamePaused = false;
+            document.getElementById('pauseBtn').style.display = 'none';
             const message = `Game Over! Score: ${score} | Enemies Trapped: ${trappedCount}`;
             document.getElementById('menuMessage').textContent = message;
             menu.classList.remove('hidden');
@@ -1043,17 +1330,24 @@
         function startGame() {
             gameRunning = true;
             gameOverFlag = false;
+            gamePaused = false;
             menu.classList.add('hidden');
+            document.getElementById('pauseBtn').style.display = 'block';
+            document.getElementById('pauseBtn').textContent = '⏸ Pause [P]';
             time = 0;
             score = 0;
             trappedCount = 0;
             balls = [];
             enemies = [];
+            blockRainTimer = 0;
             player.x = WORLD_WIDTH / 2;
             player.y = START_HEIGHT;
             player.vy = 0;
+            player.vx = 0;
             player.isOnGround = true;
             player.throwReady = true;
+            buildMode = 'block';
+            explosions = [];
             camera.x = 0;
             camera.y = 0;
             setTimeout(spawnEnemies, 5000);
@@ -1063,6 +1357,14 @@
         // Input handling
         window.addEventListener('keydown', (e) => {
             keys[e.key.toLowerCase()] = true;
+            if (e.key.toLowerCase() === 'p') togglePause();
+            // Build mode selection 1-5
+            if (gameRunning && !gamePaused) {
+                const modeIndex = parseInt(e.key) - 1;
+                if (modeIndex >= 0 && modeIndex < BUILD_MODES.length) {
+                    buildMode = BUILD_MODES[modeIndex].id;
+                }
+            }
         });
 
         window.addEventListener('keyup', (e) => {
