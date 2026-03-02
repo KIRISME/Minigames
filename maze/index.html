@@ -141,6 +141,57 @@
         .hidden {
             display: none;
         }
+
+        #fireRateHud {
+            position: fixed;
+            top: 10px;
+            right: 130px;
+            background: rgba(0,0,0,0.75);
+            border: 1px solid #667eea;
+            border-radius: 6px;
+            padding: 6px 12px;
+            color: white;
+            font-size: 0.82em;
+            font-family: Arial, sans-serif;
+            z-index: 50;
+            display: none;
+            align-items: center;
+            gap: 8px;
+        }
+        #fireRateHud span.fr-slow { color: #888; }
+        #fireRateHud span.fr-fast { color: #888; }
+        #fireRateHudLabel { color: #00ff88; font-weight: bold; min-width: 82px; text-align: center; }
+
+        #fireRateDial {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 155px;
+            height: 6px;
+            border-radius: 3px;
+            background: linear-gradient(to right, #667eea, #00ff88);
+            outline: none;
+            cursor: pointer;
+            vertical-align: middle;
+        }
+        #fireRateDial::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 20px;
+            height: 20px;
+            border-radius: 50%;
+            background: #00ff88;
+            cursor: pointer;
+            border: 2px solid #222;
+            box-shadow: 0 0 6px rgba(0,255,136,0.6);
+        }
+        #fireRateDial::-moz-range-thumb {
+            width: 20px;
+            height: 20px;
+            border-radius: 50%;
+            background: #00ff88;
+            cursor: pointer;
+            border: 2px solid #222;
+        }
     </style>
 </head>
 <body>
@@ -151,6 +202,14 @@
         <div><span class="label">Don't touch the floor or lava! | Build to climb! | A/D: Move | W/SPACE: Jump | Hold Mouse: Minigun</span></div>
     </div>
     <button id="pauseBtn" onclick="togglePause()">⏸ Pause [P]</button>
+    <div id="fireRateHud">
+        <span class="fr-slow">🐌</span>
+        <input type="range" id="fireRateDialHud" min="1" max="5" value="5" oninput="updateFireRate(this.value, 'hud')">
+        <span class="fr-fast">🔫</span>
+        <span id="fireRateHudLabel">🔫 Minigun</span>
+        <span style="display:inline-block;width:1px;background:rgba(255,255,255,0.2);align-self:stretch;margin:0 4px;"></span>
+        <button id="enemyToggleHudBtn" class="toggleBtn on" onclick="toggleEnemiesHud(this)" style="padding:3px 10px;font-size:0.82em;margin:0;">👾 Enemies: ON</button>
+    </div>
 
     <div id="menu">
         <h1>🎯 Block Builder</h1>
@@ -166,7 +225,15 @@
         <div>
             <button class="toggleBtn" id="blockRainBtn" onclick="toggleOpt('blockRain',this)">🌧 Block Rain</button>
             <button class="toggleBtn" id="noFloorBtn" onclick="toggleOpt('noFloor',this)">🟢 No Floor</button>
+            <button class="toggleBtn on" id="enemiesMenuBtn" onclick="toggleOpt('enemies',this)">👾 Enemies: ON</button>
         </div>
+        <p style="margin-top:16px;margin-bottom:6px;color:#aaa;font-size:0.9em;">Fire Rate:</p>
+        <div style="display:flex;align-items:center;gap:12px;justify-content:center;margin-bottom:4px;">
+            <span style="color:#888;font-size:0.82em;">🐌 Slow</span>
+            <input type="range" id="fireRateDial" min="1" max="5" value="5" oninput="updateFireRate(this.value, 'menu')">
+            <span style="color:#888;font-size:0.82em;">Fast 🔫</span>
+        </div>
+        <div id="fireRateLabel" style="color:#00ff88;font-size:0.9em;margin-bottom:10px;">🔫 Minigun</div>
         <button onclick="startGame()">Start Game</button>
         <button onclick="location.href='../index.html'">Back to Menu</button>
     </div>
@@ -212,6 +279,23 @@
         // Modifier options
         let blockRainEnabled = false;
         let noFloorEnabled = false;
+        let enemiesEnabled = true;
+
+        // Fire rate dial
+        let fireRateMult = 1;
+        const FIRE_RATE_MULTS  = [300, 40, 8, 2, 1];
+        const FIRE_RATE_LABELS = ['🐌 Sniper', '💤 Slow', '🎯 Normal', '⚡ Fast', '🔫 Minigun'];
+
+        function updateFireRate(val, source) {
+            const idx = parseInt(val) - 1;
+            fireRateMult = FIRE_RATE_MULTS[idx];
+            const label = FIRE_RATE_LABELS[idx];
+            document.getElementById('fireRateLabel').textContent = label;
+            document.getElementById('fireRateHudLabel').textContent = label;
+            // Keep both sliders in sync
+            if (source !== 'menu') document.getElementById('fireRateDial').value = val;
+            if (source !== 'hud')  document.getElementById('fireRateDialHud').value = val;
+        }
         let gamePaused = false;
         let blockRainTimer = 0;
         
@@ -312,7 +396,23 @@
         function toggleOpt(opt, btn) {
             if (opt === 'blockRain') { blockRainEnabled = !blockRainEnabled; }
             if (opt === 'noFloor') { noFloorEnabled = !noFloorEnabled; }
+            if (opt === 'enemies') {
+                enemiesEnabled = !enemiesEnabled;
+                const label = enemiesEnabled ? '👾 Enemies: ON' : '👾 Enemies: OFF';
+                btn.textContent = label;
+                const inGameBtn = document.getElementById('enemyToggleHudBtn');
+                if (inGameBtn) { inGameBtn.textContent = label; inGameBtn.classList.toggle('on', enemiesEnabled); }
+            }
             btn.classList.toggle('on');
+        }
+
+        function toggleEnemiesHud(btn) {
+            enemiesEnabled = !enemiesEnabled;
+            const label = enemiesEnabled ? '👾 Enemies: ON' : '👾 Enemies: OFF';
+            btn.textContent = label;
+            btn.classList.toggle('on', enemiesEnabled);
+            const menuBtn = document.getElementById('enemiesMenuBtn');
+            if (menuBtn) { menuBtn.textContent = label; menuBtn.classList.toggle('on', enemiesEnabled); }
         }
 
         function togglePause() {
@@ -331,6 +431,7 @@
 
         function spawnEnemies() {
             enemies = [];
+            if (!enemiesEnabled) return;
             for (let i = 0; i < startingEnemyCount; i++) {
                 spawnEnemy();
             }
@@ -361,7 +462,7 @@
             balls.push(bl);
             
             player.throwReady = false;
-            player.throwCooldown = mode.cooldown;
+            player.throwCooldown = mode.cooldown * fireRateMult;
         }
 
         function updateBalls() {
@@ -777,7 +878,7 @@
             }
 
             // Spawn additional enemies over time
-            if (Math.floor(time) % 20 === 0 && Math.floor(time) > 0 && enemies.length < Math.floor(time / 20) + 2 && enemies.length < 12) {
+            if (enemiesEnabled && Math.floor(time) % 20 === 0 && Math.floor(time) > 0 && enemies.length < Math.floor(time / 20) + 2 && enemies.length < 12) {
                 spawnEnemy();
             }
 
@@ -879,7 +980,7 @@
 
             // Update balls and enemies
             updateBalls();
-            updateEnemies();
+            if (enemiesEnabled) updateEnemies();
 
             // Update timer
             time += 1 / 60;
@@ -1322,6 +1423,7 @@
             gameRunning = false;
             gamePaused = false;
             document.getElementById('pauseBtn').style.display = 'none';
+            document.getElementById('fireRateHud').style.display = 'none';
             const message = `Game Over! Score: ${score} | Enemies Trapped: ${trappedCount}`;
             document.getElementById('menuMessage').textContent = message;
             menu.classList.remove('hidden');
@@ -1334,6 +1436,10 @@
             menu.classList.add('hidden');
             document.getElementById('pauseBtn').style.display = 'block';
             document.getElementById('pauseBtn').textContent = '⏸ Pause [P]';
+            document.getElementById('fireRateHud').style.display = 'flex';
+            // sync enemy HUD button with current toggle state
+            const etb = document.getElementById('enemyToggleHudBtn');
+            if (etb) { etb.textContent = enemiesEnabled ? '👾 Enemies: ON' : '👾 Enemies: OFF'; etb.classList.toggle('on', enemiesEnabled); }
             time = 0;
             score = 0;
             trappedCount = 0;
