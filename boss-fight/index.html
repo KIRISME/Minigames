@@ -62,6 +62,19 @@
             </div>
         </div>
 
+        <!-- Pause Button -->
+        <button id="pauseBtn" onclick="game.togglePause()">⏸ Pause [P]</button>
+
+        <!-- Pause Overlay -->
+        <div id="pauseOverlay" class="pause-overlay">
+            <div class="pause-card">
+                <div class="pause-title">PAUSED</div>
+                <p class="pause-sub">Game is frozen</p>
+                <button class="pause-resume-btn" onclick="game.togglePause()">▶ Resume</button>
+                <div class="pause-hint"><kbd>P</kbd> to toggle pause</div>
+            </div>
+        </div>
+
         <!-- Game Over Screen -->
         <div class="game-over" id="gameOver">
             <h2 id="gameOverTitle"></h2>

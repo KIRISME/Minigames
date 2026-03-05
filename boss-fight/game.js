@@ -126,6 +126,11 @@ const game = {
         document.addEventListener('keydown', (e) => {
             this.keys[e.key.toLowerCase()] = true;
             
+            // Pause toggle - P key
+            if (e.key.toLowerCase() === 'p' && this.gameStarted && !this.gameOver) {
+                this.togglePause();
+            }
+
             // Healing ability - Q key
             if (e.key.toLowerCase() === 'q') {
                 this.activateHealing();
@@ -196,6 +201,27 @@ const game = {
         this.activateMode(randomMode);
     },
     
+    // Toggle pause
+    togglePause() {
+        this.paused = !this.paused;
+        const btn = document.getElementById('pauseBtn');
+        const overlay = document.getElementById('pauseOverlay');
+        if (btn) btn.textContent = this.paused ? '\u25b6 Resume [P]' : '\u23f8 Pause [P]';
+        if (overlay) overlay.classList.toggle('active', this.paused);
+    },
+
+    // Show a mode banner
+    showModeBanner(modeName) {
+        const existing = document.querySelector('.mode-banner');
+        if (existing) existing.remove();
+        const banner = document.createElement('div');
+        banner.className = 'mode-banner';
+        banner.textContent = '\u26a1 ' + modeName.toUpperCase() + ' MODE';
+        const inner = document.querySelector('.game-wrapper-inner');
+        if (inner) inner.appendChild(banner);
+        setTimeout(() => { if (banner.parentNode) banner.remove(); }, 2100);
+    },
+
     // Activate temporary mode
     activateMode(modeNum) {
         const mode = this.player.modes[modeNum];
@@ -221,6 +247,12 @@ const game = {
             7: '#ff00ff', 8: '#00ff00', 9: '#8800ff'
         };
         this.createParticles(this.player.x, this.player.y, colors[modeNum], 20);
+        // Show banner
+        const modeNames = {
+            1:'Multi Shot', 2:'Minigun', 3:'Ray Gun', 4:'Shotgun',
+            5:'Explosive', 6:'Piercing', 7:'Laser Sniper', 8:'Ricochet', 9:'Orbital'
+        };
+        if (modeNames[modeNum]) this.showModeBanner(modeNames[modeNum]);
     },
     
     // Activate healing ability (Q key)
@@ -733,7 +765,7 @@ const game = {
     
     // Update game state
     update() {
-        if (!this.gameStarted || this.gameOver) return;
+        if (!this.gameStarted || this.gameOver || this.paused) return;
         
         // Increment frame counter
         this.frameCount++;
@@ -967,6 +999,8 @@ const game = {
                 if (!this.player.shieldActive) {
                     this.player.health -= proj.damage;
                     this.createParticles(proj.x, proj.y, '#ff4444', 10);
+                    this.screenShake = 8;
+                    this.damageFlash = 12;
                     
                     // Explosive creates extra damage zone
                     if (proj.type === 'explosive') {
@@ -1137,6 +1171,16 @@ const game = {
     // Draw game
     draw() {
         if (!this.gameStarted) return;
+
+        // Screen shake offset
+        let shakeX = 0, shakeY = 0;
+        if (this.screenShake > 0) {
+            shakeX = (Math.random() - 0.5) * this.screenShake * 2;
+            shakeY = (Math.random() - 0.5) * this.screenShake * 2;
+            this.screenShake = Math.max(0, this.screenShake - 1);
+        }
+        ctx.save();
+        ctx.translate(shakeX, shakeY);
         
         // Clear canvas with gradient background
         const gradient = ctx.createLinearGradient(0, 0, 0, canvas.height);
@@ -1279,6 +1323,32 @@ const game = {
         
         // Draw mode UI
         this.drawModeUI();
+
+        // Damage flash overlay
+        if (this.damageFlash > 0) {
+            ctx.fillStyle = 'rgba(255, 0, 0, ' + (this.damageFlash / 40) + ')';
+            ctx.fillRect(-10, -10, canvas.width + 20, canvas.height + 20);
+            this.damageFlash = Math.max(0, this.damageFlash - 1);
+        }
+
+        // Low-health vignette
+        const hpRatio = this.player.health / this.player.maxHealth;
+        if (hpRatio < 0.3) {
+            const pulse = 0.06 + 0.06 * Math.sin(Date.now() * 0.006);
+            const vig = ctx.createRadialGradient(canvas.width / 2, canvas.height / 2, canvas.height * 0.3, canvas.width / 2, canvas.height / 2, canvas.height * 0.8);
+            vig.addColorStop(0, 'rgba(255,0,0,0)');
+            vig.addColorStop(1, 'rgba(255,0,0,' + (pulse + (0.3 - hpRatio) * 0.4) + ')');
+            ctx.fillStyle = vig;
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+        }
+
+        // Pause overlay dim
+        if (this.paused) {
+            ctx.fillStyle = 'rgba(0,0,0,0.45)';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+        }
+
+        ctx.restore();
     },
     
     // Draw stars background

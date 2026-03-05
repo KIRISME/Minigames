@@ -43,6 +43,12 @@
                 radial-gradient(circle at 80% 60%, rgba(52, 211, 153, 0.08), transparent 38%),
                 repeating-linear-gradient(120deg, rgba(255, 255, 255, 0.03), rgba(255, 255, 255, 0.03) 1px, transparent 1px, transparent 80px);
             opacity: 0.8;
+            animation: skylineShift 12s ease-in-out infinite;
+        }
+
+        @keyframes skylineShift {
+            0%, 100% { opacity: 0.8; background-position: 0 0; }
+            50%       { opacity: 1;   background-position: 20px 10px; }
         }
 
         .page {
@@ -60,6 +66,7 @@
             justify-content: space-between;
             gap: 16px;
             margin-bottom: 26px;
+            animation: headerSlideIn 0.7s cubic-bezier(0.22, 1, 0.36, 1) both;
         }
 
         .title-block {
@@ -73,6 +80,32 @@
             font-size: clamp(40px, 7vw, 72px);
             letter-spacing: 3px;
             color: var(--text);
+            animation: titleGlow 3s ease-in-out infinite;
+        }
+
+        @keyframes titleGlow {
+            0%, 100% { text-shadow: 0 0 10px rgba(255, 122, 24, 0.3); }
+            50%       { text-shadow: 0 0 30px rgba(255, 122, 24, 0.8), 0 0 60px rgba(255, 122, 24, 0.3); }
+        }
+
+        @keyframes headerSlideIn {
+            0%   { opacity: 0; transform: translateY(-30px); }
+            100% { opacity: 1; transform: translateY(0); }
+        }
+
+        @keyframes statPulse {
+            0%, 100% { box-shadow: 0 0 0 0 rgba(52, 211, 153, 0); }
+            50%       { box-shadow: 0 0 12px 2px rgba(52, 211, 153, 0.15); }
+        }
+
+        @keyframes stageSlideIn {
+            0%   { opacity: 0; transform: translateX(-20px); }
+            100% { opacity: 1; transform: translateX(0); }
+        }
+
+        @keyframes overlayCardEntrance {
+            0%   { opacity: 0; transform: scale(0.88) translateY(20px); }
+            100% { opacity: 1; transform: scale(1) translateY(0); }
         }
 
         .subtitle {
@@ -152,6 +185,7 @@
             display: flex;
             flex-direction: column;
             gap: 6px;
+            animation: statPulse 3s ease-in-out infinite;
         }
 
         .stat span {
@@ -195,7 +229,14 @@
             flex-direction: column;
             gap: 4px;
             transition: transform 0.2s ease, border 0.2s ease;
+            animation: stageSlideIn 0.5s cubic-bezier(0.22, 1, 0.36, 1) both;
         }
+
+        .stage-item:nth-child(1) { animation-delay: 0.1s; }
+        .stage-item:nth-child(2) { animation-delay: 0.18s; }
+        .stage-item:nth-child(3) { animation-delay: 0.26s; }
+        .stage-item:nth-child(4) { animation-delay: 0.34s; }
+        .stage-item:nth-child(5) { animation-delay: 0.42s; }
 
         .stage-item[data-status="current"] {
             border-color: rgba(255, 122, 24, 0.5);
@@ -260,6 +301,7 @@
             padding: 28px;
             max-width: 420px;
             text-align: center;
+            animation: overlayCardEntrance 0.4s cubic-bezier(0.22, 1, 0.36, 1) both;
         }
 
         .overlay-card h2 {

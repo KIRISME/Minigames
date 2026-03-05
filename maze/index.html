@@ -70,12 +70,34 @@
             text-align: center;
             z-index: 100;
             border: 3px solid #667eea;
+            animation: menuEntrance 0.6s cubic-bezier(0.22, 1, 0.36, 1) both, borderPulse 3s ease-in-out infinite;
+        }
+
+        @keyframes menuEntrance {
+            0%   { opacity: 0; transform: translate(-50%, -40%) scale(0.88); }
+            100% { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+        }
+
+        @keyframes borderPulse {
+            0%, 100% { border-color: #667eea; box-shadow: 0 0 20px rgba(102, 126, 234, 0.4); }
+            50%       { border-color: #00ff88; box-shadow: 0 0 40px rgba(0, 255, 136, 0.5); }
+        }
+
+        @keyframes btnEntrance {
+            0%   { opacity: 0; transform: translateY(14px); }
+            100% { opacity: 1; transform: translateY(0); }
         }
 
         #menu h1 {
             font-size: 2.5em;
             margin-bottom: 20px;
             color: #00ff88;
+            animation: titleGlow 2s ease-in-out infinite;
+        }
+
+        @keyframes titleGlow {
+            0%, 100% { text-shadow: 0 0 10px rgba(0, 255, 136, 0.5); }
+            50%       { text-shadow: 0 0 30px rgba(0, 255, 136, 1), 0 0 60px rgba(0, 255, 136, 0.4); }
         }
 
         #menu p {
@@ -93,11 +115,13 @@
             border-radius: 8px;
             font-size: 1em;
             cursor: pointer;
-            transition: transform 0.2s;
+            transition: transform 0.2s, box-shadow 0.2s;
+            animation: btnEntrance 0.5s ease both;
         }
 
         #menu button:hover {
             transform: scale(1.05);
+            box-shadow: 0 0 20px rgba(102, 126, 234, 0.7);
         }
 
         .enemyCountBtn {
@@ -141,6 +165,25 @@
         .hidden {
             display: none;
         }
+
+        #pauseBtn, #clearBtn {
+            position: fixed;
+            top: 10px;
+            z-index: 50;
+            background: rgba(0,0,0,0.75);
+            color: white;
+            border: 1px solid #667eea;
+            border-radius: 6px;
+            padding: 6px 12px;
+            font-size: 0.82em;
+            font-family: Arial, sans-serif;
+            cursor: pointer;
+            transition: border-color 0.15s, box-shadow 0.15s;
+        }
+        #pauseBtn { right: 10px; }
+        #clearBtn  { right: 100px; border-color: #ff4444; display: none; }
+        #clearBtn:hover  { border-color: #ff8888; box-shadow: 0 0 10px rgba(255,68,68,0.5); }
+        #pauseBtn:hover  { border-color: #00ff88; box-shadow: 0 0 10px rgba(0,255,136,0.4); }
 
         #fireRateHud {
             position: fixed;
@@ -202,6 +245,7 @@
         <div><span class="label">Don't touch the floor or lava! | Build to climb! | A/D: Move | W/SPACE: Jump | Hold Mouse: Minigun</span></div>
     </div>
     <button id="pauseBtn" onclick="togglePause()">⏸ Pause [P]</button>
+    <button id="clearBtn" onclick="clearBlocks()" title="Clear all placed blocks">🗑 Clear Blocks</button>
     <div id="fireRateHud">
         <span class="fr-slow">🐌</span>
         <input type="range" id="fireRateDialHud" min="1" max="5" value="5" oninput="updateFireRate(this.value, 'hud')">
@@ -270,7 +314,7 @@
             { id: 'block',   label: '🧱 Block',   w: 24, h: 24, cooldown: 0.005 },
             { id: 'plank',   label: '🪵 Plank',   w: 48, h: 12, cooldown: 0.008 },
             { id: 'pillar',  label: '🏛 Pillar',  w: 12, h: 48, cooldown: 0.008 },
-            { id: 'bomb',    label: '💣 Bomb',    w: 22, h: 22, cooldown: 0.00001  },
+            { id: 'bomb',    label: '💣 Bomb',    w: 22, h: 22, cooldown: 0.005  },
             { id: 'boulder', label: '🪨 Boulder', w: 40, h: 40, cooldown: 0.002  },
         ];
         let buildMode = 'block';
@@ -420,6 +464,12 @@
             gamePaused = !gamePaused;
             document.getElementById('pauseBtn').textContent = gamePaused ? '▶ Resume [P]' : '⏸ Pause [P]';
             if (!gamePaused) gameLoop();
+        }
+
+        function clearBlocks() {
+            if (!gameRunning) return;
+            balls = [];
+            explosions = [];
         }
 
 
@@ -1423,6 +1473,7 @@
             gameRunning = false;
             gamePaused = false;
             document.getElementById('pauseBtn').style.display = 'none';
+            document.getElementById('clearBtn').style.display = 'none';
             document.getElementById('fireRateHud').style.display = 'none';
             const message = `Game Over! Score: ${score} | Enemies Trapped: ${trappedCount}`;
             document.getElementById('menuMessage').textContent = message;
@@ -1436,6 +1487,7 @@
             menu.classList.add('hidden');
             document.getElementById('pauseBtn').style.display = 'block';
             document.getElementById('pauseBtn').textContent = '⏸ Pause [P]';
+            document.getElementById('clearBtn').style.display = 'block';
             document.getElementById('fireRateHud').style.display = 'flex';
             // sync enemy HUD button with current toggle state
             const etb = document.getElementById('enemyToggleHudBtn');

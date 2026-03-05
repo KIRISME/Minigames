@@ -71,17 +71,29 @@ function main() {
   // Menu state
   let gameState = 'menu'; // 'menu' or 'playing'
   let menuWaveInput = '1';
+  let paused = false;
+
+  function _togglePause(){
+    if(gameState !== 'playing') return;
+    paused = !paused;
+    const btn = document.getElementById('pauseBtn');
+    const overlay = document.getElementById('pauseOverlay');
+    if(btn) btn.textContent = paused ? '\u25b6 Resume [P]' : '\u23f8 Pause [P]';
+    if(overlay){ overlay.style.display = paused ? 'flex' : 'none'; }
+  }
+  window._shooterTogglePause = _togglePause;
 
   document.addEventListener('keydown', e=> {
     keys[e.key.toLowerCase()]=true;
+    if(e.key.toLowerCase() === 'p') { _togglePause(); return; }
     if(gameState === 'menu'){
       if(e.key === 'Enter'){
         // play the overlay fade then start
         _menuStartFromUI();
-      } else if(e.key === 'Backspace'){
+      } else if(e.key === 'Backspace' && document.activeElement !== menuWaveEl){
         menuWaveInput = menuWaveInput.slice(0,-1) || '1';
         if(menuWaveEl) menuWaveEl.value = menuWaveInput;
-      } else if(/^\d$/.test(e.key)){
+      } else if(/^\d$/.test(e.key) && document.activeElement !== menuWaveEl){
         if(menuWaveInput.length < 5) menuWaveInput += e.key;
         if(menuWaveEl) menuWaveEl.value = menuWaveInput;
       }
@@ -932,8 +944,12 @@ function main() {
   function loop(now){
     const dt = Math.min(0.033, (now - last)/1000);
     last = now;
-    update(dt);
+    if(!paused) update(dt);
     draw();
+    if(paused && gameState === 'playing'){
+      ctx.fillStyle = 'rgba(0,0,0,0.45)';
+      ctx.fillRect(0,0,canvas.width,canvas.height);
+    }
     requestAnimationFrame(loop);
   }
 

@@ -132,6 +132,7 @@
             z-index: 100;
             display: none;
             border: 3px solid #00ff00;
+            animation: gameOverEntrance 0.5s cubic-bezier(0.22, 1, 0.36, 1) both, borderCycle 3s ease-in-out infinite;
         }
 
         #gameOver h1 {
@@ -184,12 +185,14 @@
             text-align: center;
             z-index: 200;
             border: 3px solid #00ff00;
+            animation: menuEntrance 0.6s cubic-bezier(0.22, 1, 0.36, 1) both, borderCycle 3s ease-in-out infinite;
         }
 
         #difficultyMenu h1 {
             font-size: 40px;
             margin-bottom: 30px;
             text-shadow: 0 0 10px rgba(0, 255, 0, 0.8);
+            animation: neonFlicker 4s ease-in-out infinite;
         }
 
         .difficulty-buttons {
@@ -231,6 +234,28 @@
             100% { transform: rotate(360deg); }
         }
 
+        @keyframes gameOverEntrance {
+            0%   { opacity: 0; transform: translate(-50%, -60%) scale(0.8); }
+            60%  { transform: translate(-50%, -48%) scale(1.04); }
+            100% { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+        }
+
+        @keyframes menuEntrance {
+            0%   { opacity: 0; transform: translate(-50%, -40%) scale(0.9); }
+            100% { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+        }
+
+        @keyframes borderCycle {
+            0%, 100% { border-color: #00ff00; box-shadow: 0 0 20px rgba(0, 255, 0, 0.5), inset 0 0 20px rgba(0, 255, 0, 0.05); }
+            33%       { border-color: #00ffff; box-shadow: 0 0 20px rgba(0, 255, 255, 0.5), inset 0 0 20px rgba(0, 255, 255, 0.05); }
+            66%       { border-color: #ff00ff; box-shadow: 0 0 20px rgba(255, 0, 255, 0.5), inset 0 0 20px rgba(255, 0, 255, 0.05); }
+        }
+
+        @keyframes neonFlicker {
+            0%, 19%, 21%, 23%, 25%, 54%, 56%, 100% { opacity: 1; text-shadow: 0 0 10px rgba(0, 255, 0, 0.8); }
+            20%, 24%, 55% { opacity: 0.4; text-shadow: none; }
+        }
+
         .bg-star {
             position: absolute;
             background: white;
@@ -269,6 +294,73 @@
         #player {
             animation: pulse-glow 2s ease-in-out infinite;
         }
+
+        /* Pause button */
+        #pauseBtn {
+            position: absolute;
+            top: 14px;
+            right: 14px;
+            z-index: 20;
+            background: rgba(0, 0, 0, 0.8);
+            color: #00ff00;
+            border: 2px solid #00ff00;
+            border-radius: 8px;
+            padding: 8px 18px;
+            font-size: 0.85em;
+            font-weight: bold;
+            cursor: pointer;
+            transition: all 0.2s;
+            letter-spacing: 1px;
+        }
+        #pauseBtn:hover {
+            background: rgba(0, 255, 0, 0.15);
+            box-shadow: 0 0 16px rgba(0, 255, 0, 0.5);
+        }
+        /* Pause overlay */
+        #pauseOverlay {
+            display: none;
+            position: absolute;
+            inset: 0;
+            background: rgba(0, 0, 0, 0.78);
+            backdrop-filter: blur(5px);
+            z-index: 150;
+            align-items: center;
+            justify-content: center;
+        }
+        #pauseOverlay.active { display: flex; }
+        .pause-card {
+            background: rgba(0, 0, 0, 0.95);
+            border: 3px solid #00ff00;
+            border-radius: 12px;
+            padding: 40px 60px;
+            text-align: center;
+            animation: borderCycle 3s ease-in-out infinite;
+        }
+        .pause-card h2 {
+            font-size: 2.5em;
+            color: #00ff00;
+            margin-bottom: 12px;
+            text-shadow: 0 0 20px rgba(0, 255, 0, 0.8);
+        }
+        .pause-card p { color: #aaa; margin-bottom: 24px; }
+        .pause-card button {
+            background: #00ff00;
+            color: #000;
+            border: none;
+            padding: 12px 36px;
+            font-size: 1.1em;
+            border-radius: 6px;
+            cursor: pointer;
+            font-weight: bold;
+            display: block;
+            margin: 0 auto 14px;
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+        .pause-card button:hover {
+            transform: scale(1.06);
+            box-shadow: 0 0 16px rgba(0, 255, 0, 0.6);
+        }
+        .pause-hint { color: #555; font-size: 0.8em; }
     </style>
 </head>
 <body>
@@ -276,6 +368,17 @@
         <div id="hud">
             <div id="score">Score: 0</div>
             <div id="health">Health: ❤️ ❤️ ❤️</div>
+        </div>
+        <!-- Pause button -->
+        <button id="pauseBtn" onclick="togglePause()">⏸ Pause [P]</button>
+        <!-- Pause overlay -->
+        <div id="pauseOverlay">
+            <div class="pause-card">
+                <h2>⏸ PAUSED</h2>
+                <p>Game is frozen</p>
+                <button onclick="togglePause()">▶ Resume</button>
+                <div class="pause-hint"><kbd>P</kbd> to toggle</div>
+            </div>
         </div>
         <div id="player"></div>
         <div id="gameOver">
@@ -351,7 +454,20 @@
         let upPressed = false;
         let downPressed = false;
 
+        let gamePaused = false;
+
+        function togglePause() {
+            if (!gameRunning) return;
+            gamePaused = !gamePaused;
+            const btn = document.getElementById('pauseBtn');
+            const overlay = document.getElementById('pauseOverlay');
+            if (btn) btn.textContent = gamePaused ? '\u25b6 Resume [P]' : '\u23f8 Pause [P]';
+            if (overlay) overlay.classList.toggle('active', gamePaused);
+            if (!gamePaused) requestAnimationFrame(gameLoop);
+        }
+
         document.addEventListener('keydown', function(e) {
+            if (e.key === 'p' || e.key === 'P') { togglePause(); return; }
             if (e.key === 'ArrowLeft' || e.key === 'a' || e.key === 'A') {
                 leftPressed = true;
             }
@@ -748,6 +864,7 @@
             if (!gameRunning) {
                 return;
             }
+            if (gamePaused) return;
 
             frameCounter++;
 

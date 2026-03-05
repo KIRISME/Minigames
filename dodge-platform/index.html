@@ -12,11 +12,23 @@
     overflow: hidden;
     background: #111;
     font-family: 'Orbitron', sans-serif;
+    animation: bgPulse 6s ease-in-out infinite;
   }
+
+  @keyframes bgPulse {
+    0%, 100% { background: #111; }
+    50%       { background: #180028; }
+  }
+
   canvas {
     display: block;
     background: linear-gradient(135deg, #1a0033, #000);
-    filter: drop-shadow(0 0 20px rgba(0, 255, 255, 0.2));
+    animation: canvasGlow 4s ease-in-out infinite;
+  }
+
+  @keyframes canvasGlow {
+    0%, 100% { filter: drop-shadow(0 0 20px rgba(0, 255, 255, 0.2)); }
+    50%       { filter: drop-shadow(0 0 40px rgba(255, 0, 255, 0.4)) drop-shadow(0 0 20px rgba(0, 255, 255, 0.3)); }
   }
   
   @keyframes float {
@@ -30,15 +42,51 @@
   }
   
   @keyframes glitch {
-    0% { filter: hue-rotate(0deg); }
-    50% { filter: hue-rotate(10deg); }
-    100% { filter: hue-rotate(0deg); }
+    0%   { filter: hue-rotate(0deg) brightness(1); clip-path: inset(0 0 0 0); }
+    10%  { filter: hue-rotate(20deg) brightness(1.1); clip-path: inset(5% 0 90% 0); }
+    20%  { filter: hue-rotate(-10deg) brightness(0.9); clip-path: inset(70% 0 10% 0); }
+    30%  { filter: hue-rotate(5deg) brightness(1); clip-path: inset(0 0 0 0); }
+    100% { filter: hue-rotate(0deg) brightness(1); clip-path: inset(0 0 0 0); }
+  }
+
+  @keyframes neonFlicker {
+    0%, 19%, 21%, 23%, 25%, 54%, 56%, 100% { opacity: 1; }
+    20%, 24%, 55% { opacity: 0.4; }
+  }
+
+  @keyframes slideInUp {
+    from { opacity: 0; transform: translateY(60px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+
+  #dpPauseBtn {
+    position: fixed;
+    top: 14px;
+    right: 14px;
+    z-index: 210;
+    background: rgba(0,0,0,0.82);
+    color: #0ff;
+    border: 2px solid #0ff;
+    border-radius: 8px;
+    padding: 8px 18px;
+    font-size: 0.85em;
+    font-weight: bold;
+    cursor: pointer;
+    font-family: Arial;
+    letter-spacing: 1px;
+    transition: all .2s;
+    display: none;
+  }
+  #dpPauseBtn:hover {
+    background: rgba(0,255,255,0.12);
+    box-shadow: 0 0 16px rgba(0,255,255,0.5);
   }
 </style>
 </head>
 <body>
 
 <canvas id="game"></canvas>
+<button id="dpPauseBtn" onclick="toggleDPPause()">⏸ Pause [P]</button>
 
 <script>
 const canvas = document.getElementById("game");
@@ -50,6 +98,14 @@ function resize() {
 }
 window.addEventListener("resize", resize);
 resize();
+
+let dpPaused = false;
+function toggleDPPause(){
+  if(gameState !== 'playing') return;
+  dpPaused = !dpPaused;
+  const btn = document.getElementById('dpPauseBtn');
+  if(btn) btn.textContent = dpPaused ? '\u25b6 Resume [P]' : '\u23f8 Pause [P]';
+}
 
 // ---------- GAME STATES ----------
 let gameState = "menu"; // menu, playing, gameover
@@ -89,6 +145,7 @@ let score = 0;
 // ---------- INPUT ----------
 const keys = {};
 addEventListener("keydown", e => {
+  if((e.key === 'p' || e.key === 'P') && gameState === 'playing') { e.preventDefault(); toggleDPPause(); return; }
   keys[e.key.toLowerCase()] = true;
   if (gameState === "playing") {
     if (e.key === " " || e.key.toLowerCase() === "w" || e.key === "ArrowUp") {
@@ -453,6 +510,8 @@ function resetGame() {
   spikeWall.x = 0;
   scrollSpeed = 3.5 + (chosenSpeed - 1) * 1.8; // speed multiplier
   gameState = "playing";
+  dpPaused = false;
+  const pb = document.getElementById('dpPauseBtn'); if(pb) pb.style.display='block';
   isFadingIn = true;
   fadeAlpha = 1;
 }
@@ -584,7 +643,7 @@ function update() {
         case "falling": if (!p.timer) p.timer = 1; break;
         case "disappearing": p.broken = true; break;
         case "ice": player.onIce = true; break;
-        case "lava": gameState = "gameover"; break;
+        case "lava": gameState = "gameover"; dpPaused = false; { const pb=document.getElementById('dpPauseBtn'); if(pb) pb.style.display='none'; } break;
         case "spring": player.vy = -65; break;
         case "slow": player.vx *= 0.3; break;
         case "crumbly": p.shake = 30; break;
@@ -608,6 +667,8 @@ function update() {
 
   if (player.x - player.r <= spikeWall.x + spikeWall.width) {
     gameState = "gameover";
+    dpPaused = false;
+    const pb = document.getElementById('dpPauseBtn'); if(pb) pb.style.display='none';
     isFadingOut = true;
     fadeAlpha = 0;
   }
@@ -1017,12 +1078,25 @@ function drawFadeOverlay() {
 }
 
 function loop() {
-  update();
+  if(!dpPaused) update();
   updateFade();
   if (gameState === "menu") drawMenu();
   if (gameState === "playing") drawPlaying();
   if (gameState === "gameover") drawGameOver();
   drawFadeOverlay();
+  // Pause overlay
+  if(dpPaused && gameState === 'playing'){
+    ctx.fillStyle='rgba(0,0,0,0.72)';
+    ctx.fillRect(0,0,canvas.width,canvas.height);
+    ctx.fillStyle='#0ff';
+    ctx.font='bold 72px Arial';
+    ctx.textAlign='center';
+    ctx.fillText('PAUSED',canvas.width/2,canvas.height/2-24);
+    ctx.font='22px Arial';
+    ctx.fillStyle='#888';
+    ctx.fillText('Press P or click Resume to continue',canvas.width/2,canvas.height/2+30);
+    ctx.textAlign='left';
+  }
   requestAnimationFrame(loop);
 }
 

@@ -13,6 +13,19 @@
     <div id="hint">Move with arrow keys or WASD to dodge. Auto-shoots at enemies. Pick green packs to heal.</div>
   </div>
 
+  <!-- Pause button -->
+  <button id="pauseBtn" style="position:fixed;top:14px;right:14px;z-index:70;background:rgba(7,16,40,0.85);color:#4fdc9a;border:2px solid #4fdc9a;border-radius:8px;padding:8px 18px;font-weight:700;cursor:pointer;font-family:system-ui;letter-spacing:1px;transition:all .2s" onclick="window._shooterTogglePause && window._shooterTogglePause()">⏸ Pause [P]</button>
+
+  <!-- Pause overlay -->
+  <div id="pauseOverlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.72);backdrop-filter:blur(6px);z-index:65;align-items:center;justify-content:center;">
+    <div style="background:linear-gradient(180deg,#0f2636,#081428);border:2px solid #4fdc9a;border-radius:16px;padding:40px 60px;text-align:center;box-shadow:0 0 40px rgba(79,220,154,0.3);">
+      <div style="font-size:3em;font-weight:900;color:#4fdc9a;letter-spacing:4px;margin-bottom:10px;">PAUSED</div>
+      <p style="color:#9fb6c9;margin-bottom:28px;">Game is frozen</p>
+      <button onclick="window._shooterTogglePause && window._shooterTogglePause()" style="background:linear-gradient(90deg,#4fdc9a,#2bb67b);border:none;border-radius:10px;padding:14px 40px;color:#042918;font-size:1.2em;font-weight:bold;cursor:pointer;display:block;margin:0 auto 16px;">▶ Resume</button>
+      <div style="color:#555;font-size:0.8em;"><kbd>P</kbd> to toggle</div>
+    </div>
+  </div>
+
   <!-- HTML menu overlay (visible on load) -->
   <div id="menu-overlay" aria-hidden="false">
     <div class="menu-card" role="dialog" aria-label="Main menu">

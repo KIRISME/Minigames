@@ -4,7 +4,8 @@
 <head>
   <title>Shield Block Game - Double Shield Fixed</title>
   <style>
-    body { margin:0; overflow:hidden; background:#111; font-family:Arial; }
+    body { margin:0; overflow:hidden; background:#111; font-family:Arial;
+           animation: bgPulse 8s ease-in-out infinite; }
     canvas { display:block; }
     #restartBtn{
       position:absolute;
@@ -29,11 +30,25 @@
       text-align:center;
       z-index:200;
       border:3px solid #00FF00;
+      animation: menuEntrance 0.6s cubic-bezier(0.22, 1, 0.36, 1) both, greenBorderPulse 3s ease-in-out infinite;
+    }
+    @keyframes menuEntrance {
+      0%   { opacity: 0; transform: translate(-50%, -40%) scale(0.9); }
+      100% { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+    }
+    @keyframes greenBorderPulse {
+      0%, 100% { border-color: #00FF00; box-shadow: 0 0 20px rgba(0, 255, 0, 0.4); }
+      50%       { border-color: #00ffcc; box-shadow: 0 0 40px rgba(0, 255, 200, 0.6); }
     }
     #difficultyMenu h1 {
       font-size:40px;
       margin-bottom:10px;
       text-shadow:0 0 10px rgba(0,255,0,0.8);
+      animation: titleFlicker 4s ease-in-out infinite;
+    }
+    @keyframes titleFlicker {
+      0%, 19%, 21%, 23%, 25%, 54%, 56%, 100% { opacity: 1; text-shadow: 0 0 10px rgba(0,255,0,0.8), 0 0 20px rgba(0,255,0,0.4); }
+      20%, 24%, 55% { opacity: 0.5; text-shadow: none; }
     }
     #difficultyMenu p {
       font-size:16px;
@@ -57,11 +72,17 @@
       font-weight:bold;
       transition:all 0.3s;
       min-width:80px;
+      animation: btnBounceIn 0.5s cubic-bezier(0.22, 1, 0.36, 1) both;
     }
     .difficulty-btn:hover {
       background:#00cc00;
       box-shadow:0 0 15px rgba(0,255,0,0.5);
       transform:scale(1.05);
+    }
+    @keyframes btnBounceIn {
+      0%   { opacity: 0; transform: scale(0.7) translateY(10px); }
+      60%  { transform: scale(1.08) translateY(-4px); }
+      100% { opacity: 1; transform: scale(1) translateY(0); }
     }
     .projectile-selection {
       margin-top:40px;
@@ -113,12 +134,36 @@
       0%, 100% { background: linear-gradient(45deg, #0a0e1f, #1a0033); }
       50% { background: linear-gradient(45deg, #1a0a2e, #2a0a4a); }
     }
+
+    /* Pause button */
+    #shieldPauseBtn {
+      position: fixed;
+      top: 14px;
+      right: 14px;
+      z-index: 210;
+      background: rgba(0,0,0,0.8);
+      color: #00FF00;
+      border: 2px solid #00FF00;
+      border-radius: 8px;
+      padding: 8px 18px;
+      font-size: 0.85em;
+      font-weight: bold;
+      cursor: pointer;
+      font-family: Arial;
+      letter-spacing: 1px;
+      transition: all .2s;
+    }
+    #shieldPauseBtn:hover {
+      background: rgba(0,255,0,0.12);
+      box-shadow: 0 0 16px rgba(0,255,0,0.5);
+    }
   </style>
 </head>
 <body>
 
 <canvas id="gameCanvas"></canvas>
 <button id="restartBtn">Restart</button>
+<button id="shieldPauseBtn" onclick="toggleShieldPause()">⏸ Pause [P]</button>
 <div id="difficultyMenu">
   <h1>SELECT SPEED</h1>
   <p>How fast should the projectiles be?</p>
@@ -143,6 +188,15 @@ const restartBtn = document.getElementById("restartBtn");
 
 canvas.width = window.innerWidth;
 canvas.height = window.innerHeight;
+
+let gamePaused = false;
+
+function toggleShieldPause(){
+  if(!gameRunning || gameOver) return;
+  gamePaused = !gamePaused;
+  const btn = document.getElementById('shieldPauseBtn');
+  if(btn) btn.textContent = gamePaused ? '\u25b6 Resume [P]' : '\u23f8 Pause [P]';
+}
 
 let gameOver = false;
 let score = 0;
@@ -247,6 +301,7 @@ window.addEventListener("resize", ()=>{
 });
 
 window.addEventListener("keydown", (e)=>{
+  if((e.key === 'p' || e.key === 'P') && gameRunning && !gameOver) { e.preventDefault(); toggleShieldPause(); return; }
   if(gameRunning && !gameOver && e.code === "Space") {
     e.preventDefault();
     if(healCooldown <= 0) {
@@ -774,7 +829,7 @@ function updatePowerUps(){
 }
 
 function update(delta){
-  if(!gameRunning || gameOver) return;
+  if(!gameRunning || gameOver || gamePaused) return;
 
   score+=delta*0.02;
 
@@ -905,6 +960,19 @@ function gameLoop(timestamp){
   lastTime=timestamp;
   update(delta);
   draw();
+  // Pause overlay drawn on canvas
+  if(gamePaused && gameRunning && !gameOver){
+    ctx.fillStyle='rgba(0,0,0,0.7)';
+    ctx.fillRect(0,0,canvas.width,canvas.height);
+    ctx.fillStyle='#00FF00';
+    ctx.font='bold 64px Arial';
+    ctx.textAlign='center';
+    ctx.fillText('PAUSED',canvas.width/2,canvas.height/2-20);
+    ctx.font='20px Arial';
+    ctx.fillStyle='#aaa';
+    ctx.fillText('Press P or click Resume to continue',canvas.width/2,canvas.height/2+30);
+    ctx.textAlign='left';
+  }
   requestAnimationFrame(gameLoop);
 }
 
