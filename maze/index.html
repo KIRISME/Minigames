@@ -205,6 +205,54 @@
         #fireRateHud span.fr-fast { color: #888; }
         #fireRateHudLabel { color: #00ff88; font-weight: bold; min-width: 82px; text-align: center; }
 
+        #shotCountHud {
+            position: fixed;
+            top: 44px;
+            right: 130px;
+            background: rgba(0,0,0,0.75);
+            border: 1px solid #667eea;
+            border-radius: 6px;
+            padding: 6px 12px;
+            color: white;
+            font-size: 0.82em;
+            font-family: Arial, sans-serif;
+            z-index: 50;
+            display: none;
+            align-items: center;
+            gap: 8px;
+        }
+        #shotCountHudLabel { color: #00ff88; font-weight: bold; min-width: 60px; text-align: center; }
+        #shotCountDialHud {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 135px;
+            height: 6px;
+            border-radius: 3px;
+            background: linear-gradient(to right, #667eea, #ff88ff);
+            outline: none;
+            cursor: pointer;
+            vertical-align: middle;
+        }
+        #shotCountDialHud::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 20px;
+            height: 20px;
+            border-radius: 50%;
+            background: #ff88ff;
+            cursor: pointer;
+            border: 2px solid #222;
+            box-shadow: 0 0 6px rgba(255,136,255,0.6);
+        }
+        #shotCountDialHud::-moz-range-thumb {
+            width: 20px;
+            height: 20px;
+            border-radius: 50%;
+            background: #ff88ff;
+            cursor: pointer;
+            border: 2px solid #222;
+        }
+
         #fireRateDial {
             -webkit-appearance: none;
             appearance: none;
@@ -254,6 +302,12 @@
         <span style="display:inline-block;width:1px;background:rgba(255,255,255,0.2);align-self:stretch;margin:0 4px;"></span>
         <button id="enemyToggleHudBtn" class="toggleBtn on" onclick="toggleEnemiesHud(this)" style="padding:3px 10px;font-size:0.82em;margin:0;">👾 Enemies: ON</button>
     </div>
+    <div id="shotCountHud">
+        <span style="color:#888;">💊 1</span>
+        <input type="range" id="shotCountDialHud" min="1" max="20" value="1" oninput="updateShotCount(this.value, 'hud')">
+        <span style="color:#888;">20</span>
+        <span id="shotCountHudLabel">× 1 shot</span>
+    </div>
 
     <div id="menu">
         <h1>🎯 Block Builder</h1>
@@ -278,6 +332,13 @@
             <span style="color:#888;font-size:0.82em;">Fast 🔫</span>
         </div>
         <div id="fireRateLabel" style="color:#00ff88;font-size:0.9em;margin-bottom:10px;">🔫 Minigun</div>
+        <p style="margin-top:12px;margin-bottom:6px;color:#aaa;font-size:0.9em;">Shot Count (per throw):</p>
+        <div style="display:flex;align-items:center;gap:12px;justify-content:center;margin-bottom:4px;">
+            <span style="color:#888;font-size:0.82em;">💊 1</span>
+            <input type="range" id="shotCountDial" min="1" max="20" value="1" oninput="updateShotCount(this.value, 'menu')">
+            <span style="color:#888;font-size:0.82em;">20</span>
+        </div>
+        <div id="shotCountLabel" style="color:#ff88ff;font-size:0.9em;margin-bottom:10px;">× 1 shot</div>
         <button onclick="startGame()">Start Game</button>
         <button onclick="location.href='../index.html'">Back to Menu</button>
     </div>
@@ -330,6 +391,9 @@
         const FIRE_RATE_MULTS  = [300, 40, 8, 2, 1];
         const FIRE_RATE_LABELS = ['🐌 Sniper', '💤 Slow', '🎯 Normal', '⚡ Fast', '🔫 Minigun'];
 
+        // Shot count dial (how many blocks fired per throw, 1-20)
+        let shotCount = 1;
+
         function updateFireRate(val, source) {
             const idx = parseInt(val) - 1;
             fireRateMult = FIRE_RATE_MULTS[idx];
@@ -339,6 +403,15 @@
             // Keep both sliders in sync
             if (source !== 'menu') document.getElementById('fireRateDial').value = val;
             if (source !== 'hud')  document.getElementById('fireRateDialHud').value = val;
+        }
+
+        function updateShotCount(val, source) {
+            shotCount = parseInt(val);
+            const label = shotCount === 1 ? '× 1 shot' : `× ${shotCount} shots`;
+            document.getElementById('shotCountLabel').textContent = label;
+            document.getElementById('shotCountHudLabel').textContent = label;
+            if (source !== 'menu') document.getElementById('shotCountDial').value = val;
+            if (source !== 'hud')  document.getElementById('shotCountDialHud').value = val;
         }
         let gamePaused = false;
         let blockRainTimer = 0;
@@ -501,15 +574,26 @@
             if (dist < 5) return; // Don't throw if too close
             
             // Scale speed with distance - throw as far as aimed
-            const speed = Math.min(24, dist / 25); // Faster throw for farther aiming
-            const vx = (dx / dist) * speed;
-            const vy = (dy / dist) * speed;
-            
+            const speed = Math.min(24, dist / 25);
+            const baseAngle = Math.atan2(dy, dx);
             const mode = BUILD_MODES.find(m => m.id === buildMode);
-            const bl = { x: player.x, y: player.y - player.radius, vx, vy, w: mode.w, h: mode.h, shape: buildMode, life: 0 };
-            if (buildMode === 'bomb')    bl.bombTimer = 1.8;
-            if (buildMode === 'boulder') bl.gravMult  = 2.2;
-            balls.push(bl);
+
+            // Spread multiple shots across a cone
+            const halfSpread = shotCount === 1 ? 0 : Math.min(Math.PI / 2, (shotCount - 1) * 0.08);
+            for (let s = 0; s < shotCount; s++) {
+                const angleOffset = shotCount === 1 ? 0 : -halfSpread + (s / (shotCount - 1)) * halfSpread * 2;
+                const angle = baseAngle + angleOffset;
+                const bl = {
+                    x: player.x,
+                    y: player.y - player.radius,
+                    vx: Math.cos(angle) * speed,
+                    vy: Math.sin(angle) * speed,
+                    w: mode.w, h: mode.h, shape: buildMode, life: 0
+                };
+                if (buildMode === 'bomb')    bl.bombTimer = 1.8;
+                if (buildMode === 'boulder') bl.gravMult  = 2.2;
+                balls.push(bl);
+            }
             
             player.throwReady = false;
             player.throwCooldown = mode.cooldown * fireRateMult;
@@ -1489,6 +1573,7 @@
             document.getElementById('pauseBtn').textContent = '⏸ Pause [P]';
             document.getElementById('clearBtn').style.display = 'block';
             document.getElementById('fireRateHud').style.display = 'flex';
+            document.getElementById('shotCountHud').style.display = 'flex';
             // sync enemy HUD button with current toggle state
             const etb = document.getElementById('enemyToggleHudBtn');
             if (etb) { etb.textContent = enemiesEnabled ? '👾 Enemies: ON' : '👾 Enemies: OFF'; etb.classList.toggle('on', enemiesEnabled); }
